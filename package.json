@@ -1,0 +1,25 @@
+{
+  "name": "cubex-bot",
+  "version": "0.1.0",
+  "description": "Bot Discord de modération, journalisation et support du serveur Minecraft Cubex",
+  "private": true,
+  "type": "module",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=24.10.0"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.4.1",
+    "discord.js": "^14.23.2",
+    "js-yaml": "^4.1.0",
+    "zod": "^4.1.12"
+  },
+  "allowScripts": {
+    "better-sqlite3@12.11.1": true
+  }
+}
