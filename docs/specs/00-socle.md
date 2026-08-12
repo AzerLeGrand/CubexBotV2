@@ -3,7 +3,7 @@
 Spécification du noyau du bot Discord Cubex. Aucun module fonctionnel ne peut être
 écrit avant que ce socle soit en place.
 
-**Statut :** figé le 11 août 2026.
+**Statut :** figé le 11 août 2026, révisé le 12 août 2026 (voir §15, points fermés).
 **Remplace :** `CubexBOT.md` (périmé — décrivait une architecture avec panel Express).
 
 ---
@@ -278,7 +278,20 @@ commands:
       - "ID_ADMIN"
 ```
 
-Une commande dont la liste est vide est considérée comme ouverte à tous.
+Une liste **vide est refusée à la validation**. Ouvrir une commande à tous impose
+d'écrire explicitement le littéral `"public"` :
+
+```yaml
+commands:
+  ping:
+    allowed_roles: "public"
+```
+
+> Écart assumé par rapport à une première rédaction qui traitait la liste vide
+> comme une ouverture à tous. Toutes les commandes des phases 1 à 5 sont
+> réservées au staff : une liste vidée par erreur d'édition ouvrirait `/ban` à
+> `@everyone` sans le moindre message. Même profil de panne que l'identifiant
+> sans guillemets — silencieux, et bien plus coûteux.
 
 ### 8.3 Refus
 
@@ -294,12 +307,17 @@ texte ni couleur n'est écrit dans le code.
 
 ### Couleurs
 
-| Type | Valeur | Usage |
-|------|--------|-------|
-| Marque | `#F60321` | messages publics, communications officielles |
-| Succès | `#57F287` | opération réussie |
-| Erreur | `#E67E22` | échec, refus |
-| Information | `#5865F2` | neutre |
+| Clé | Libellé | Valeur | Usage |
+|-----|---------|--------|-------|
+| `brand` | Marque | `#F60321` | messages publics, communications officielles |
+| `success` | Succès | `#57F287` | opération réussie |
+| `error` | Erreur | `#E67E22` | échec, refus |
+| `info` | Information | `#5865F2` | neutre |
+
+**Les clés sont en anglais et constituent une interface publique** : le module
+d'embeds (phase 5) les expose telles quelles au staff, qui les saisit dans une
+modale. Ce sont les clés exactes attendues dans `embeds.yml`. La colonne
+« Libellé » n'est là que pour la lecture de ce document.
 
 Le rouge de marque est extrait du logo Cubex. L'erreur est en orange
 volontairement : le rouge Discord standard (`#ED4245`) est trop proche du rouge de
@@ -311,9 +329,18 @@ Commun à tous les embeds : le texte `Cubex` et un horodatage.
 
 ### Variables
 
-Un gabarit accepte des variables substituées à l'exécution. La syntaxe est à
-arrêter à l'implémentation ; une variable non fournie doit produire une erreur
-journalisée, pas un affichage vide silencieux.
+Un gabarit accepte des variables substituées à l'exécution.
+
+**Syntaxe : accolade simple, nom en anglais** — `{username}`, `{number}`,
+`{reason}`. Les noms suivent la même convention que les clés de configuration.
+
+Le moteur de substitution est **partagé** : il s'applique aux gabarits
+d'`embeds.yml`, aux textes de `messages.yml` et à certaines valeurs de
+`config.yml` (gabarit de nommage des salons de ticket, notamment). Ce n'est donc
+pas un service exclusif du moteur d'embeds.
+
+Une variable non fournie doit produire une erreur journalisée, pas un affichage
+vide silencieux.
 
 ---
 
@@ -342,7 +369,7 @@ déclarée.
 |-----------|-------|-------|
 | Contenu de messages supprimés ou modifiés | 30 jours | donnée la plus intrusive et la moins durablement utile |
 | Événements structurels (arrivées, rôles, salons) | 90 jours | peu sensible, utile à la reconstitution |
-| Sanctions | à trancher | mémoire de modération, seule donnée que Discord ne conserve pas |
+| Sanctions | **sans limite** | mémoire de modération, seule donnée que Discord ne conserve pas (voir `03-sanctions.md`) |
 | Logs techniques VPS | 14 jours | diagnostic uniquement |
 
 Toutes les durées sont dans `config.yml`.
@@ -398,10 +425,11 @@ Ces éléments sont acquis et ne seront pas réétudiés :
 |--------|-----------------|-------|
 | `Guilds` | fonctionnement de base | 0 |
 | `GuildMembers` (privilégié) | arrivées, départs, changements de rôle | 1 |
-| `GuildMessages` | événements de message | 2 |
+| `GuildMessages` | républication du message de vérification, puis événements de message | **1** |
 | `MessageContent` (privilégié) | contenu des messages supprimés ou modifiés | 2 |
 | `GuildVoiceStates` | journalisation vocale | 2 |
 | `AutoModerationExecution` | déclenchements AutoMod | 3 |
+| `GuildModeration` | bannissements et levées de bannissement | 2 |
 
 Les intents privilégiés s'activent dans le portail développeur. Depuis le
 10 juin 2026, Discord applique un seuil basé sur le nombre d'utilisateurs : les
@@ -447,7 +475,8 @@ Pour référence lors de la configuration :
 `Staff` est un rôle commun d'affichage, attribué à toute l'équipe de modération et
 de développement.
 
-**Rôles de support** — Game, Appeal, Store, Bug / Tech, Partner, Recruitment.
+**Rôles de support** — Game Support, Appeal Support, Store Support,
+`Bug / Tech Support`, Partner Support, Recruitment Support.
 Servent au routage des tickets.
 
 **Rôles communautaires** — Partner, Media, Cu'Boost, Ultra, Elite, Pro, Member.
@@ -462,9 +491,40 @@ Discord.
 
 À trancher avant ou pendant l'implémentation :
 
-1. **Rétention des sanctions** — 1 an ou sans limite.
-2. **Syntaxe des variables** dans les gabarits d'embeds.
-3. **Bibliothèque de journalisation** — à arbitrer selon l'empreinte mémoire.
-4. **Identifiants réels** des rôles et salons — à collecter après suppression des
+1. **Bibliothèque de journalisation** — à arbitrer selon l'empreinte mémoire.
+   Contrainte de conception : le module de configuration **n'importe jamais** le
+   logger. Il émet des événements et reçoit un logger injecté après
+   construction, faute de quoi le cycle `config → logging → config` est
+   inévitable (le §5.5 impose de journaliser depuis la validation).
+2. **Identifiants réels** des rôles et salons — à collecter après suppression des
    rôles orphelins des anciens bots (`c-link`, `cubex bot`, `cubex link`, et les
    deux rôles d'intégration verrouillés).
+3. **Valeurs par défaut restant à fixer**, réparties dans les modules :
+   nombre de tentatives de vérification, seuil de bascule vers le fichier joint,
+   fenêtre de groupement, entrées par page du casier, délai entre deux ouvertures
+   de ticket, plafond de messages techniques par minute.
+
+### Règle sur les valeurs par défaut
+
+`.default()` dans le schéma est **réservé aux réglages purement techniques**.
+Sont obligatoires, sans valeur par défaut :
+
+- tout identifiant Discord ;
+- toute liste `allowed_roles` ;
+- toute durée de rétention.
+
+Un défaut silencieux sur une rétention signifie une donnée personnelle conservée
+plus longtemps que prévu sans que personne ne le sache.
+
+### Points fermés
+
+| Point | Décision | Référence |
+|-------|----------|-----------|
+| Rétention des sanctions | sans limite | `03-sanctions.md` §6 |
+| Rétention des événements de modération | `logs.retention.structural_days` | `02-logs-discord.md` §9 |
+| Phase de l'intent `GuildMessages` | avancé en phase 1 | `01-verification.md` §3 |
+| Relais du compte rendu de purge | salon `bot`, phase 6 | `06-logs-techniques.md` §2 |
+| Syntaxe des variables | accolade simple, noms anglais, moteur partagé | §9 |
+| Clés de couleurs | anglaises, interface publique | §9 |
+| `allowed_roles` vide | refusé, littéral `"public"` requis | §8.2 |
+| Fenêtre de groupement | deux clés indépendantes | `02` §5 et `06` §5 |

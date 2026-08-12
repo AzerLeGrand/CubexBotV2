@@ -3,7 +3,7 @@
 Système de support. Un membre ouvre un ticket depuis un menu, répond à un
 questionnaire, et obtient un salon privé avec l'équipe concernée.
 
-**Statut :** figé le 11 août 2026.
+**Statut :** figé le 11 août 2026, révisé le 12 août 2026.
 **Prérequis :** socle (`00-socle.md`).
 
 ---
@@ -51,8 +51,26 @@ saisie.** Le questionnaire de chaque catégorie est donc plafonné à cinq quest
 La validation de la configuration doit refuser le démarrage si une catégorie en
 déclare davantage, avec un message explicite.
 
-Chaque question déclare son libellé, son caractère obligatoire ou facultatif, son
-style (ligne unique ou paragraphe) et sa longueur maximale.
+Chaque question déclare son caractère obligatoire ou facultatif, son style (ligne
+unique ou paragraphe), sa longueur maximale, et **une clé de message** pointant
+vers son libellé.
+
+**Le libellé lui-même n'est pas dans `config.yml`.** Un libellé est un texte vu
+par un membre, et le §5.1 du socle interdit tout texte utilisateur dans le
+fichier de réglages. La convention `*_key` déjà utilisée pour le nom de catégorie
+s'étend donc aux questions :
+
+```yaml
+questions:
+  - label_key: "tickets.categories.game.questions.pseudo"
+    required: true
+    style: short          # short | paragraph
+    max_length: 32
+```
+
+`crossref.js` vérifie au démarrage que chaque `label_key` résout vers une clé
+existante de `messages.yml`. Une clé morte est une erreur de validation, pas une
+modale vide découverte par un membre.
 
 ### Le récapitulatif
 
@@ -88,8 +106,13 @@ doit néanmoins traiter proprement l'échec de création plutôt que de planter.
 
 ### Nommage
 
-Gabarit configurable, par exemple `ticket-{numero}-{pseudo}`. Le numéro est
+Gabarit configurable, par exemple `ticket-{number}-{username}`. Le numéro est
 incrémental et stocké en base.
+
+Les variables suivent la syntaxe commune définie au socle §9 : accolade simple,
+noms en anglais. Le moteur de substitution est le même que celui des embeds et
+des messages — ce gabarit est la preuve qu'il doit aussi s'appliquer à des
+valeurs de `config.yml`.
 
 ### Permissions
 
@@ -116,11 +139,22 @@ tickets:
   categories:
     - id: "game"
       name_key: "tickets.categories.game.name"
+      description_key: "tickets.categories.game.description"
       category_id: "1234567890123456789"
       ping_role_ids:
         - "1234567890123456789"
-      questions: [...]
+      questions:
+        - label_key: "tickets.categories.game.questions.pseudo"
+          required: true
+          style: short
+          max_length: 32
 ```
+
+**La clé `id` est structurante.** C'est elle qui identifie une catégorie, jamais
+sa position dans la liste. Les capacités déclarées au registre du socle en
+dérivent (`tickets.category.game`) : un chemin indexé du type
+`tickets.categories.0.category_id` casserait silencieusement au premier
+réordonnancement du fichier.
 
 **Rappel du socle, appliqué ici en priorité.** C'est cette structure qui a mis
 l'ancien bot à l'arrêt :
@@ -262,7 +296,8 @@ automatiquement se lèverait toute seule.
 ## 11. Points ouverts
 
 1. **Contenu exact des questionnaires** pour chacune des six catégories — cinq
-   questions maximum par catégorie.
+   questions maximum par catégorie. Les libellés sont à rédiger dans
+   `messages.yml`, la structure dans `config.yml`.
 2. **Délai entre deux ouvertures** — valeur par défaut à fixer.
 3. **Rétention des tickets fermés** en base.
 4. **Gabarit de nommage** des salons.

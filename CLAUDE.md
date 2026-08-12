@@ -6,7 +6,11 @@ Cubex (`fr.cubex.club`).
 ## Pile
 
 Node.js 24 LTS, ESM (`"type": "module"`). discord.js, better-sqlite3, js-yaml,
-zod. Supervision pm2 sur un VPS Debian 13.
+**zod 4** (la syntaxe d'erreur diffère de zod 3). Supervision pm2 sur un VPS
+Debian 13.
+
+`.env` est chargé par `process.loadEnvFile()`, natif et stable depuis Node 24.10.
+Pas de dépendance `dotenv`.
 
 ## Commandes
 

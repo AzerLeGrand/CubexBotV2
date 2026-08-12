@@ -3,7 +3,7 @@
 Enregistrement et restitution des événements du serveur Discord. Le module le plus
 volumineux de la v1.
 
-**Statut :** figé le 11 août 2026.
+**Statut :** figé le 11 août 2026, révisé le 12 août 2026.
 **Prérequis :** socle (`00-socle.md`) opérationnel.
 
 ---
@@ -179,7 +179,8 @@ sans elle, chaque log déclencherait un log.
 Discord limite le débit d'envoi de messages. Une purge de cent messages ou une
 arrivée massive en vocal saturerait un envoi par événement.
 
-- **Fenêtre d'accumulation configurable**, 2 à 5 secondes par défaut.
+- **Fenêtre d'accumulation configurable** via `logs.grouping.window_seconds`,
+  2 à 5 secondes par défaut.
 - Les événements accumulés partent en un message unique.
 - **Le groupement s'applique à tous les salons**, pas seulement aux plus bruyants.
 - Un événement isolé part donc avec un léger délai. C'est accepté.
@@ -264,7 +265,13 @@ récupérable.
 |--------|------------------|-----|
 | Contenu des messages supprimés ou modifiés | 30 jours | `logs.retention.message_content_days` |
 | Événements structurels | 90 jours | `logs.retention.structural_days` |
-| Événements de modération | voir phase 3 | — |
+| Événements de modération dans `log_events` | 90 jours | `logs.retention.structural_days` |
+
+> Précision levant un renvoi circulaire avec la phase 3. Un bannissement produit
+> **deux lignes distinctes** : une dans `log_events` (le fait journalisé), une
+> dans `sanctions` (la mémoire de modération). La première suit la rétention des
+> événements structurels. La seconde est conservée sans limite et exclue du
+> registre de purge. Il n'existe pas de clé `sanctions.retention.*`.
 
 Toutes les valeurs sont configurables. Le module déclare ses tables au registre de
 purge du socle.
@@ -308,7 +315,8 @@ des auteurs et le rattrapage sont impossibles.
 ## 12. Points ouverts
 
 1. **Seuil de bascule** vers le fichier joint — valeur par défaut à fixer.
-2. **Fenêtre de groupement** — 2 ou 5 secondes.
+2. **Fenêtre de groupement** — 2 ou 5 secondes. Clé propre à ce module
+   (`logs.grouping.window_seconds`), indépendante de celle de la phase 6.
 3. **Tolérance de corrélation** avec le journal d'audit — fenêtre temporelle
    acceptable pour attribuer une action à un auteur.
 4. **Identifiants réels** des neuf salons de journalisation.

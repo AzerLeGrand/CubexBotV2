@@ -3,7 +3,7 @@
 Relais vers Discord des journaux applicatifs du bot et des journaux système du
 VPS. Deux salons de la catégorie admin : **bot** et **système VPS**.
 
-**Statut :** figé le 11 août 2026.
+**Statut :** figé le 11 août 2026, révisé le 12 août 2026.
 **Prérequis :** socle (`00-socle.md`), journalisation Discord (`02-logs-discord.md`)
 pour le mécanisme de groupement.
 
@@ -149,8 +149,9 @@ des centaines d'envois.
 
 ### Groupement
 
-Même mécanisme qu'en phase 2 : fenêtre d'accumulation configurable, les entrées
-accumulées partent en un message unique.
+Même mécanisme qu'en phase 2, mais **clé indépendante** :
+`tech_logs.grouping.window_seconds`. Les volumes et la criticité diffèrent de
+ceux de la journalisation Discord, les deux fenêtres ne sont donc pas couplées.
 
 ### Plafond et condensation
 
@@ -253,5 +254,4 @@ Schéma indicatif, à préciser à l'implémentation.
 1. **Plafond de messages par minute** — valeur par défaut à fixer après
    observation du volume réel.
 2. **Traitement des adresses IP SSH** — à confirmer (voir section 4).
-3. **Fenêtre de groupement** — reprendre celle de la phase 2 ou la découpler.
-4. **Identifiants réels** des salons `bot` et `système VPS`.
+3. **Identifiants réels** des salons `bot` et `système VPS`.

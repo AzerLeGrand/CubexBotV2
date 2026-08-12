@@ -3,7 +3,7 @@
 Mémoire de modération. Le bot n'invente aucun mécanisme de sanction : il s'appuie
 sur les fonctions natives de Discord et enregistre ce qui n'est pas conservé.
 
-**Statut :** figé le 11 août 2026.
+**Statut :** figé le 11 août 2026, révisé le 12 août 2026.
 **Prérequis :** socle (`00-socle.md`) et journalisation Discord (`02-logs-discord.md`).
 
 ---
@@ -158,10 +158,14 @@ Un membre ne peut pas consulter son propre casier.
 
 ## 6. Rétention
 
-| Donnée | Durée |
-|--------|-------|
-| Sanctions (ban, unban, timeout, kick) | **sans limite** |
-| Déclenchements AutoMod | voir rétention des événements structurels, phase 2 |
+| Donnée | Durée | Clé |
+|--------|-------|-----|
+| Sanctions (table `sanctions`) | **sans limite** | aucune — exclue du registre de purge |
+| Déclenchements AutoMod (table `automod_triggers`) | 90 jours | `logs.retention.structural_days` |
+
+> Le renvoi circulaire avec la phase 2 est levé : les lignes de `log_events`
+> décrivant une modération suivent `logs.retention.structural_days`, la table
+> `sanctions` n'a aucune clé de rétention et n'est jamais purgée.
 
 **Justification.** C'est la seule donnée que Discord ne conserve pas au-delà de
 90 jours, et le volume est dérisoire. Un récidiviste revenant après un an doit

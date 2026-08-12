@@ -74,17 +74,30 @@ Tout message du bot passe par un gabarit de `embeds.yml`. Aucun texte ni couleur
 L'erreur est en orange délibérément : le rouge Discord standard (`#ED4245`) est
 trop proche du rouge de marque. Ne pas le « corriger ».
 
+**Les clés `brand`, `success`, `error`, `info` sont une interface publique** : le
+module d'embeds les expose au staff, qui les saisit dans une modale. Ce sont les
+clés exactes attendues dans `embeds.yml`, en anglais.
+
 Pied de page commun : `Cubex` et un horodatage.
 
-Une variable de gabarit non fournie doit produire une erreur journalisée, pas un
-affichage vide silencieux.
+## Variables de gabarit
+
+Accolade simple, noms en **anglais** : `{username}`, `{number}`, `{reason}`.
+
+Le moteur de substitution est **partagé** entre `embeds.yml`, `messages.yml` et
+certaines valeurs de `config.yml` — le gabarit de nommage des salons de ticket,
+`ticket-{number}-{username}`, en est l'exemple. Ce n'est pas un service exclusif
+du moteur d'embeds.
+
+Une variable non fournie doit produire une erreur journalisée, pas un affichage
+vide silencieux.
 
 ## Commandes
 
 - Slash uniquement. Pas de commandes à préfixe.
 - Enregistrement au niveau du serveur, pas globalement.
-- Permissions par liste de rôles en configuration. Une liste vide signifie ouvert
-  à tous.
+- Permissions par liste de rôles en configuration. Une liste vide est **refusée**
+  à la validation ; ouvrir une commande à tous impose le littéral `"public"`.
 - Refus : message éphémère au demandeur seul, aucune trace dans les salons de
   logs.
 
