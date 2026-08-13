@@ -23,6 +23,11 @@ templates:
     title_key: "commands.denied.title"
     description_key: "commands.denied.description"
 
+  command_failed:
+    color: "error"
+    title_key: "commands.failed.title"
+    description_key: "commands.failed.description"
+
   feature_unavailable:
     color: "error"
     title_key: "commands.unavailable.title"

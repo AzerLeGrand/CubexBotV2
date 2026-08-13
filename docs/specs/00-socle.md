@@ -507,6 +507,12 @@ Aucun module n'écrit sa propre logique de suppression. Chaque module déclare :
 Une tâche planifiée parcourt le registre et supprime les lignes dépassant la durée
 déclarée.
 
+**`date_column` doit contenir un horodatage ISO 8601 en TEXT**, et le registre le
+vérifie au premier passage sur chaque table. SQLite ordonne les types avant les
+valeurs — `NULL < INTEGER < TEXT` — donc une colonne en entier Unix comparée à un
+seuil ISO rendrait la condition toujours vraie et viderait la table entière.
+Une convention documentée ne suffit pas à écarter un effacement total silencieux.
+
 - **Exécution : 4h00**, dans le fuseau défini par `bot.timezone`
   (`Europe/Paris`). Creux de fréquentation.
 - Fréquence : quotidienne.
@@ -688,8 +694,18 @@ n'importe `winston`.
 
 ### Fuseau horaire unique
 
-`bot.timezone` vaut pour tout le bot : rotation des fichiers de journaux, purge
-quotidienne, horodatages des embeds, dates du casier, transcriptions de tickets.
+`bot.timezone` vaut pour **tout ce que le bot calcule ou formate lui-même** :
+rotation des fichiers de journaux, purge quotidienne, dates écrites dans le corps
+d'un embed (date d'une sanction au casier, horodatage d'une transcription),
+noms de fichiers datés.
+
+**Exception : le champ `timestamp` natif d'un embed.** Discord l'affiche dans le
+fuseau de chaque lecteur, et le bot n'a aucune prise dessus. C'est le comportement
+souhaitable pour un contenu lu par des humains, et il est conservé tel quel. Une
+première rédaction de cette section rangeait les horodatages d'embeds sous
+`bot.timezone` ; c'était une erreur, la plateforme s'en charge.
+
+La règle porte donc sur ce que le bot formate, pas sur ce qu'il délègue.
 
 Un fuseau déclaré par module produirait des dates incohérentes entre deux
 affichages du même événement, et pourrait faire tomber la rotation d'un fichier

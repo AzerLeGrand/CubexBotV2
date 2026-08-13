@@ -85,9 +85,31 @@ retention: [
 ]
 ```
 
-Une tâche quotidienne à 4h00 (Europe/Paris) parcourt le registre et supprime.
-Une erreur sur une table n'interrompt pas le traitement des autres. Le compte
-rendu indique le nombre de lignes supprimées par table.
+Une tâche quotidienne à 4h00, dans le fuseau `bot.timezone`, parcourt le registre
+et supprime. Une erreur sur une table n'interrompt pas le traitement des autres.
+Le compte rendu indique le nombre de lignes supprimées par table.
+
+### Format obligatoire de `date_column`
+
+**La colonne doit contenir un horodatage ISO 8601 en TEXT.** Ce n'est pas une
+préférence de style, c'est une condition de sûreté.
+
+SQLite ordonne les types avant les valeurs : `NULL < INTEGER < TEXT`. Une colonne
+stockée en entier Unix, comparée à un seuil ISO en TEXT, rend
+`date_column < cutoff` **toujours vrai** — la purge ne se tromperait pas de
+bornes, elle viderait la table entière, silencieusement, à 4 h du matin.
+
+Une convention documentée ne protège pas de cette erreur. Le registre **vérifie**
+au premier passage sur chaque table : lecture d'une valeur non nulle de la
+colonne, contrôle de la forme ISO 8601, refus de purger cette table sinon. Table
+vide, rien à vérifier, report au passage suivant.
+
+### Validation des identifiants SQL
+
+Table et colonne sont validées à l'inscription contre `/^[a-z_][a-z0-9_]*$/`.
+Elles sont interpolées dans la requête — SQLite ne les accepte pas en paramètre
+lié — et viennent du code des modules, mais la porte se ferme au registre plutôt
+que de compter sur la discipline des appelants.
 
 ## Exclusions de purge
 

@@ -201,6 +201,116 @@ describe('run', () => {
   });
 });
 
+describe('format de date_column', () => {
+  const inscrire = (registry, table = 'log_events') =>
+    registry.register('logs', [
+      { table, date_column: 'created_at', retention_key: 'logs.retention.structural_days' },
+    ]);
+
+  test('refuse de purger une colonne stockée en entier Unix', (t) => {
+    const { registry, logger, database, count } = sandbox(t);
+    inscrire(registry);
+
+    // SQLite classe NULL < INTEGER < TEXT : sans ce contrôle,
+    // `created_at < cutoff` serait TOUJOURS vrai et viderait la table entière.
+    const secondes = Math.floor(Date.now() / 1000);
+    database.prepare('INSERT INTO log_events (created_at) VALUES (?)').run(secondes);
+
+    const [ligne] = registry.run();
+
+    assert.match(ligne.error, /ISO 8601 en TEXT/);
+    assert.match(ligne.error, /viderait la table entière/);
+    assert.equal(count('log_events'), 1, 'la ligne d\'aujourd\'hui ne doit pas disparaître');
+    assert.match(logger.of('error')[0].message, /purge impossible/);
+  });
+
+  test('refuse le séparateur espace de datetime(\'now\')', (t) => {
+    const { registry, database, count } = sandbox(t);
+    inscrire(registry);
+
+    // `2026-08-13 04:00:00` est du TEXT, donc la comparaison ne déraille pas
+    // sur les types — mais l'espace (0x20) précède le T (0x54), et toutes les
+    // lignes du jour passeraient pour antérieures au seuil.
+    database.prepare("INSERT INTO log_events (created_at) VALUES (datetime('now'))").run();
+
+    const [ligne] = registry.run();
+
+    assert.match(ligne.error, /séparateur en position 10 : " "/);
+    assert.equal(count('log_events'), 1);
+  });
+
+  test('ne cite jamais la valeur lue', (t) => {
+    const { registry, database } = sandbox(t);
+    inscrire(registry);
+
+    // Si date_column désigne la mauvaise colonne, ce serait du contenu de
+    // message qui partirait au journal.
+    const secret = 'contenu-de-message-tres-prive';
+    database.prepare('INSERT INTO log_events (created_at) VALUES (?)').run(secret);
+
+    const [ligne] = registry.run();
+
+    assert.ok(!ligne.error.includes(secret));
+  });
+
+  test('reporte le contrôle sur une table vide, sans erreur', (t) => {
+    const { registry } = sandbox(t);
+    inscrire(registry);
+
+    const [ligne] = registry.run();
+
+    assert.equal(ligne.error, undefined);
+    assert.equal(ligne.deleted, 0);
+    assert.equal(ligne.deferred, true);
+  });
+
+  test('purge normalement dès que la table porte un horodatage valide', (t) => {
+    const { registry, insert, count } = sandbox(t);
+    inscrire(registry);
+
+    registry.run(); // table vide : contrôle reporté
+
+    insert('log_events', daysAgo(100), daysAgo(1));
+    const [ligne] = registry.run();
+
+    assert.equal(ligne.deleted, 1);
+    assert.equal(count('log_events'), 1);
+  });
+
+  test('ne contrôle qu\'une fois par table', (t) => {
+    const { registry, insert, database } = sandbox(t);
+    inscrire(registry);
+    insert('log_events', daysAgo(1));
+
+    registry.run();
+
+    // Une valeur invalide insérée après le contrôle n'est plus relue : le
+    // contrôle porte sur le schéma, pas sur chaque ligne.
+    database.prepare('INSERT INTO log_events (created_at) VALUES (?)').run(42);
+
+    assert.equal(registry.run()[0].error, undefined);
+  });
+
+  test('une table au mauvais format n\'empêche pas les autres', (t) => {
+    const { registry, database, insert, count } = sandbox(t);
+
+    registry.register('logs', [
+      { table: 'log_events', date_column: 'created_at', retention_key: 'logs.retention.structural_days' },
+      { table: 'log_contents', date_column: 'created_at', retention_key: 'logs.retention.message_content_days' },
+    ]);
+
+    database.prepare('INSERT INTO log_events (created_at) VALUES (?)').run(1_700_000_000);
+    insert('log_contents', daysAgo(100));
+
+    const report = registry.run();
+
+    assert.match(report[0].error, /ISO 8601/);
+    assert.equal(report[1].deleted, 1);
+    assert.equal(count('log_events'), 1);
+    assert.equal(count('log_contents'), 0);
+  });
+});
+
 describe('planification', () => {
   test('s\'inscrit dans la séquence d\'arrêt', (t) => {
     const root = mkdtempSync(join(tmpdir(), 'cubex-purge-'));

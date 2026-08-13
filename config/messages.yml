@@ -10,6 +10,11 @@ commands:
   denied:
     title: "Accès refusé"
     description: "Cette commande est réservée à l'équipe."
+  failed:
+    title: "Commande interrompue"
+    description: >-
+      Une erreur est survenue pendant le traitement. L'équipe technique a été
+      prévenue.
   unavailable:
     title: "Fonctionnalité indisponible"
     description: >-

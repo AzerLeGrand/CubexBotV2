@@ -23,6 +23,17 @@ const MS_PER_DAY = 86_400_000;
 const IDENTIFIER = /^[a-z_][a-z0-9_]*$/;
 
 /**
+ * Forme obligatoire d'une colonne d'horodatage : ISO 8601 en TEXT, séparateur
+ * `T`, telle que `Date.prototype.toISOString()` la produit.
+ *
+ * L'espace de `datetime('now')` — `2026-08-13 04:00:00` — est refusé
+ * délibérément : l'espace (0x20) précède le `T` (0x54) en binaire, et une
+ * table qui l'emploierait verrait toutes ses lignes du jour considérées comme
+ * antérieures au seuil. L'erreur serait d'une journée, tous les jours.
+ */
+const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/;
+
+/**
  * @param {object} options
  * @param {object} options.database
  * @param {object} options.config
@@ -33,7 +44,57 @@ export function createPurgeRegistry({ database, config, logger, shutdown = null 
   /** @type {{ owner: string, table: string, dateColumn: string, retentionKey: string }[]} */
   const entries = [];
 
+  /** Tables dont le format d'horodatage a déjà été contrôlé, `table.colonne`. */
+  const verified = new Set();
+
   let timer = null;
+
+  /**
+   * Contrôle la forme de la colonne d'horodatage, une fois par table.
+   *
+   * SQLite ordonne les types avant les valeurs : `NULL < INTEGER < TEXT`. Une
+   * colonne stockée en entier Unix, comparée à un seuil ISO en TEXT, rend
+   * `date_column < cutoff` **toujours vrai** — la purge ne se tromperait pas de
+   * bornes, elle viderait la table entière à 4 h du matin sans que rien ne le
+   * signale. Une convention documentée ne protège pas de cela.
+   *
+   * @returns {'ok' | 'deferred'} `deferred` si la table est vide : rien à
+   *   purger de toute façon, le contrôle attend le passage suivant.
+   */
+  function verifyFormat(entry) {
+    const id = `${entry.table}.${entry.dateColumn}`;
+    if (verified.has(id)) return 'ok';
+
+    const sample = database
+      .prepare(
+        `SELECT ${entry.dateColumn} AS value FROM ${entry.table} ` +
+          `WHERE ${entry.dateColumn} IS NOT NULL LIMIT 1`,
+      )
+      .get();
+
+    if (sample === undefined) return 'deferred';
+
+    const { value } = sample;
+
+    if (typeof value !== 'string' || !ISO_TIMESTAMP.test(value)) {
+      // La valeur n'est jamais citée : si `date_column` désigne la mauvaise
+      // colonne, ce serait du contenu de message qui partirait au journal. Le
+      // type et le séparateur suffisent au diagnostic.
+      const separator = typeof value === 'string' ? JSON.stringify(value.charAt(10)) : 'aucun';
+
+      throw new Error(
+        `${entry.table}.${entry.dateColumn} ne contient pas un horodatage ISO 8601 en TEXT ` +
+          `(type lu : ${typeof value}, séparateur en position 10 : ${separator}) — ` +
+          'attendu 2026-08-13T04:00:00.000Z, avec un T. La purge est refusée sur cette table : ' +
+          'SQLite classe NULL < INTEGER < TEXT, la comparaison serait toujours vraie et ' +
+          'viderait la table entière',
+      );
+    }
+
+    verified.add(id);
+
+    return 'ok';
+  }
 
   /**
    * Inscrit les déclarations d'un module.
@@ -80,6 +141,11 @@ export function createPurgeRegistry({ database, config, logger, shutdown = null 
 
     for (const entry of entries) {
       try {
+        if (verifyFormat(entry) === 'deferred') {
+          report.push({ owner: entry.owner, table: entry.table, deleted: 0, deferred: true });
+          continue;
+        }
+
         const days = config.get(entry.retentionKey);
         const cutoff = new Date(Date.now() - days * MS_PER_DAY).toISOString();
 

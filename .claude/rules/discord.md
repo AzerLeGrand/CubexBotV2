@@ -60,6 +60,18 @@ Un bot ne peut éditer que ses propres messages.
 Vérifier ces valeurs sur la documentation officielle au moment de
 l'implémentation : elles sont stables mais pas gravées.
 
+### Dépassement : tronquer ou refuser, selon qui écrit
+
+Deux traitements opposés, à ne pas confondre.
+
+| Contexte | Traitement |
+|----------|------------|
+| Moteur d'embeds, messages automatiques du bot | **tronquer en signalant** — un embed rejeté par l'API est un message qui n'arrive jamais |
+| Prévisualisation de `/embed create`, contenu saisi par le staff | **refuser sans publier** — le staff peut corriger, une troncature silencieuse défigurerait une annonce officielle |
+
+La troncature du moteur est un filet de sécurité de dernier recours, pas le
+comportement attendu en phase 5.
+
 ## Embeds
 
 Tout message du bot passe par un gabarit de `embeds.yml`. Aucun texte ni couleur
