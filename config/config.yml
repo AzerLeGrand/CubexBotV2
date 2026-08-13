@@ -14,7 +14,7 @@
 
 bot:
   # Serveur Cubex. Le bot n'opère que sur celui-ci.
-  guild_id: "000000000000000000"
+  guild_id: "1370784866706264124"
   # Fuseau de référence pour tout le bot : rotation des journaux et purge
   # nocturne tombent sur la même journée civile.
   timezone: "Europe/Paris"
@@ -24,8 +24,8 @@ bot:
 commands:
   reload:
     allowed_roles:
-      - "000000000000000000" # Owner
-      - "000000000000000000" # Admin
+      - "1380366331517603890" # Owner
+      - "1375088655378677872" # Admin
 
 database:
   # Chemin relatif à la racine du projet. Le dossier est exclu de Git.
