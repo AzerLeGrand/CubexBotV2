@@ -54,7 +54,7 @@ fichiers `01-*.md` à `06-*.md`.
 | Runtime | Node.js 24 LTS (24.19.0, dépôt NodeSource) |
 | Superviseur | pm2 7.0.3, unité systemd `pm2-cubexbot.service` |
 | Utilisateur | `cubexbot` |
-| Fuseau | `Europe/Paris` |
+| Fuseau | `Europe/Paris`, déclaré dans `bot.timezone` |
 | Mémoire | 1,8 Go + 2 Go de swap |
 
 Aucun service web n'est exposé. Le pare-feu n'autorise que SSH en entrée.
@@ -357,7 +357,8 @@ Aucun module n'écrit sa propre logique de suppression. Chaque module déclare :
 Une tâche planifiée parcourt le registre et supprime les lignes dépassant la durée
 déclarée.
 
-- **Exécution : 4h00, heure de Paris.** Creux de fréquentation.
+- **Exécution : 4h00**, dans le fuseau défini par `bot.timezone`
+  (`Europe/Paris`). Creux de fréquentation.
 - Fréquence : quotidienne.
 - **Compte rendu** : nombre de lignes supprimées par table, journalisé en fichier
   (phase 0). Le relais vers le salon `bot` sera ajouté en phase 6.
@@ -528,3 +529,16 @@ plus longtemps que prévu sans que personne ne le sache.
 | Clés de couleurs | anglaises, interface publique | §9 |
 | `allowed_roles` vide | refusé, littéral `"public"` requis | §8.2 |
 | Fenêtre de groupement | deux clés indépendantes | `02` §5 et `06` §5 |
+| Fuseau horaire | clé unique `bot.timezone`, jamais par module | §3 et §10 |
+
+### Fuseau horaire unique
+
+`bot.timezone` vaut pour tout le bot : rotation des fichiers de journaux, purge
+quotidienne, horodatages des embeds, dates du casier, transcriptions de tickets.
+
+Un fuseau déclaré par module produirait des dates incohérentes entre deux
+affichages du même événement, et pourrait faire tomber la rotation d'un fichier
+et la purge des lignes qu'il décrit sur deux journées civiles différentes.
+
+La valeur vient de la configuration et non du réglage système, pour que le poste
+de développement et le VPS se comportent à l'identique.

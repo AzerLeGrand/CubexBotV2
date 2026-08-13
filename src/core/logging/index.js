@@ -109,6 +109,11 @@ function wrap(backend, module, rotating) {
     backend.log({ ...context, level, message, module });
   };
 
+  // Mémorisée : un second appel attend la même fermeture au lieu de guetter un
+  // événement 'finish' qui ne sera plus émis, et resterait pendant pour
+  // toujours.
+  let closing = null;
+
   return {
     error: write('error'),
     warn: write('warn'),
@@ -121,9 +126,18 @@ function wrap(backend, module, rotating) {
     /** Purge immédiate des journaux échus. Le transport le fait déjà chaque jour. */
     sweep: () => rotating.sweep(),
 
+    /**
+     * Vide les tampons et ferme les fichiers.
+     *
+     * @returns {Promise<void>} résolue quand tout est écrit sur le disque
+     */
     close: () => {
-      backend.close();
-      rotating.close();
+      closing ??= new Promise((resolve) => {
+        backend.once('finish', resolve);
+        backend.end();
+      }).then(() => rotating.close());
+
+      return closing;
     },
   };
 }

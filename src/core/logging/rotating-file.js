@@ -106,10 +106,24 @@ export class RotatingFileTransport extends Transport {
     return { deleted, failed };
   }
 
+  /**
+   * Ferme le descripteur et attend que tout soit sur le disque.
+   *
+   * La promesse est ce qui permet au gestionnaire d'erreurs de ne pas sortir
+   * avant que la dernière entrée — celle qui dit pourquoi le bot s'arrête —
+   * ait été écrite.
+   *
+   * @returns {Promise<void>}
+   */
   close() {
-    this.#stream?.end();
+    const stream = this.#stream;
+
     this.#stream = null;
     this.#day = null;
+
+    if (stream === null) return Promise.resolve();
+
+    return new Promise((resolve) => stream.end(resolve));
   }
 
   /** Descripteur du jour, réouvert et suivi d'un balayage au changement de date. */
