@@ -2,7 +2,7 @@ import { render } from '../../utils/template.js';
 
 import { ConfigValidationError } from './errors.js';
 import { loadYamlFiles } from './loader.js';
-import { configDir } from './paths.js';
+import { configDir } from '../../utils/paths.js';
 import { ConfigStore, resolve } from './store.js';
 import { validate } from './validate.js';
 

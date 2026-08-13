@@ -138,8 +138,20 @@ d'épingler un commit.
 **Choix de la base — justification.** `node:sqlite`, intégré à Node 24, est classé
 *Stability 1.2 — Release candidate* : l'API est stabilisée mais le module n'a pas
 reçu le tampon final. Pour un service destiné à tourner des années,
-`better-sqlite3` reste préférable. Les deux exposent une API synchrone comparable,
-une bascule ultérieure serait courte si `node:sqlite` passe stable.
+`better-sqlite3` reste préférable.
+
+**Correction d'une estimation trop optimiste.** Une première rédaction annonçait
+qu'une bascule ultérieure serait courte. Elle ne le sera pas. La façade de
+`src/core/database/` n'isole pas la bibliothèque et n'en a jamais eu
+l'intention : `prepare()` rend des objets qui lui appartiennent, et l'instance
+brute est exposée. Elle existe pour tenir les réglages d'ouverture et la
+fermeture au même endroit, pas pour rendre la bibliothèque interchangeable.
+
+C'est un écart délibéré à ce qui est exigé de `src/core/logging/`, où aucun autre
+fichier n'importe `winston`. La différence tient à la surface : un logger
+s'utilise par quatre méthodes, une base de données par des objets préparés qui
+circulent dans tout le code. Une isolation réelle demanderait une couche
+d'abstraction dont le coût dépasse celui de la bascule qu'elle éviterait.
 
 ---
 
@@ -157,7 +169,7 @@ src/
     errors/        types d'erreur et gestionnaire global
   modules/         un dossier par module fonctionnel
   minecraft/       interface et implémentation inerte
-  utils/
+  utils/         paths, moteur de substitution
 config/
   config.yml       réglages
   messages.yml     textes
@@ -289,19 +301,48 @@ Le démarrage est refusé si une clé attendue est absente.
 
 ## 6. Base de données
 
-- Moteur : `better-sqlite3`, fichier dans `data/`.
-- Mode journal WAL.
+- Moteur : `better-sqlite3`, fichier dans un chemin donné par `config.yml`.
+- Mode journal WAL, **vérifié après application** et non seulement demandé : sur
+  un montage réseau, SQLite refuse WAL et retombe silencieusement sur le journal
+  par défaut. Le bot tournerait alors avec des garanties de durabilité qu'il
+  croit avoir.
 - Clés étrangères activées.
+- `synchronous = NORMAL` en dur. Relève de la seconde exception de `CLAUDE.md` :
+  le rendre configurable permettrait d'écrire `OFF` et de perdre des écritures
+  sur coupure — configurer une garantie revient à permettre de la contourner.
+- `busy_timeout` dans `config.yml` : c'est un réglage d'exploitation, pas une
+  garantie. Sur un disque lent, la valeur par défaut peut devenir insuffisante.
 
 ### Migrations
 
 - Fichiers SQL numérotés dans `migrations/`, nommés `001_description.sql`.
-- Une table interne enregistre les migrations appliquées (numéro, nom,
-  horodatage).
+- Une table interne enregistre les migrations appliquées. Elle porte une colonne
+  **`owner`**, et sa clé primaire est `(owner, number)` : chaque module a sa
+  propre séquence, `core/001` et `tickets/001` coexistent. Sans cela, le premier
+  module écrit devrait connaître la numérotation du noyau pour ne pas la
+  percuter.
 - Application automatique au démarrage, dans l'ordre, en transaction.
 - Une migration en échec arrête le démarrage.
 - Les migrations ne sont jamais modifiées après application : on en ajoute une
   nouvelle.
+
+### Détection de divergence
+
+Trois cas arrêtent le démarrage :
+
+| Cas | Motif |
+|-----|-------|
+| Fichier appliqué puis disparu | l'historique ne correspond plus au dépôt |
+| Fichier retouché après application | l'empreinte diffère |
+| Numéro glissé sous un numéro déjà appliqué | scénario de fusion de branches — la migration perdante ne s'appliquerait jamais et personne ne le verrait |
+
+Un fichier `.sql` au nom non conforme est **refusé, pas ignoré**. Ignoré, il ne
+s'appliquerait jamais en silence, ce qui est le pire des traitements.
+
+**L'empreinte normalise les fins de ligne avant hachage.** Git livre le même
+fichier en CRLF sous Windows et en LF sur le VPS ; sans cette normalisation,
+toutes les migrations paraîtraient modifiées au premier déploiement et le bot
+refuserait de démarrer.
 
 Chaque module déclare ses propres fichiers de migration.
 

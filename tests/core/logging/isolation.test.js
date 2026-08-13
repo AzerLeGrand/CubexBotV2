@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { test } from 'node:test';
 
-import { projectRoot } from '../../../src/core/config/paths.js';
+import { projectRoot } from '../../../src/utils/paths.js';
 
 /**
  * `src/core/logging/` expose sa propre interface. Aucun autre fichier du projet

@@ -11,7 +11,7 @@ const ID = '123456789012345678';
 const CONFIG = {
   bot: { guild_id: ID, timezone: 'Europe/Paris' },
   commands: { reload: { allowed_roles: [ID] } },
-  database: { file: 'data/cubex.sqlite' },
+  database: { file: 'data/cubex.sqlite', busy_timeout_ms: 5000 },
   logging: { level: 'info', directory: 'logs', file_prefix: 'cubex', retention_days: 30 },
   purge: { hour: 4 },
   minecraft: { enabled: false },

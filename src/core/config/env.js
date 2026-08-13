@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { ConfigError } from './errors.js';
-import { envFile } from './paths.js';
+import { envFile } from '../../utils/paths.js';
 
 const ENV_FILE_NAME = '.env';
 const HINT = `renseigner la clé dans ${ENV_FILE_NAME}, sur le modèle de ${ENV_FILE_NAME}.example`;

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import yaml from 'js-yaml';
 
 import { ConfigError } from './errors.js';
-import { configDir } from './paths.js';
+import { configDir } from '../../utils/paths.js';
 
 /**
  * Les trois fichiers, séparés par nature (socle §5.1). La clé est le nom sous

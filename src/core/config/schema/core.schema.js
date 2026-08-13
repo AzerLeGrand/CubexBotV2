@@ -79,6 +79,10 @@ const CORE_SECTIONS = {
 
   database: z.strictObject({
     file: relativePath(),
+    // Réglage d'exploitation : il ne protège rien, et sur un disque lent la
+    // valeur utile change. `synchronous`, qui garantit la durabilité, reste
+    // en dur — le configurer permettrait de le désactiver.
+    busy_timeout_ms: duration(),
   }),
 
   logging: z.strictObject({

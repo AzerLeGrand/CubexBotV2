@@ -30,6 +30,9 @@ commands:
 database:
   # Chemin relatif à la racine du projet. Le dossier est exclu de Git.
   file: "data/cubex.sqlite"
+  # Attente sur une base verrouillée — par un sqlite3 lancé en SSH, par exemple.
+  # À relever si le disque est lent.
+  busy_timeout_ms: 5000
 
 logging:
   # error | warn | info | debug

@@ -247,13 +247,21 @@ function listSqlFiles(directory, owner) {
   return entries.filter((entry) => entry.toLowerCase().endsWith('.sql')).sort();
 }
 
-/** Le noyau passe en premier, les modules ensuite par ordre alphabétique. */
+/**
+ * Le noyau passe en premier — ses tables peuvent être référencées par un module
+ * — puis les modules par ordre de nom.
+ *
+ * La comparaison est binaire et non `localeCompare` : cette dernière dépend de
+ * la locale de l'environnement, et l'ordre d'application des migrations pourrait
+ * alors différer entre le poste de développement et le VPS. Un ordre
+ * déterministe partout compte plus qu'un classement joli à lire.
+ */
 function byOwner(a, b) {
   if (a.owner === b.owner) return 0;
   if (a.owner === CORE_OWNER) return -1;
   if (b.owner === CORE_OWNER) return 1;
 
-  return a.owner.localeCompare(b.owner);
+  return a.owner < b.owner ? -1 : 1;
 }
 
 const key = ({ owner, number }) => `${owner}/${String(number).padStart(3, '0')}`;

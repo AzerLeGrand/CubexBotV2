@@ -15,7 +15,7 @@ const ID = '123456789012345678';
 const VALID_CONFIG = {
   bot: { guild_id: ID, timezone: 'Europe/Paris' },
   commands: { reload: { allowed_roles: [ID] } },
-  database: { file: 'data/cubex.sqlite' },
+  database: { file: 'data/cubex.sqlite', busy_timeout_ms: 5000 },
   logging: { level: 'info', directory: 'logs', file_prefix: 'cubex', retention_days: 30 },
   purge: { hour: 4 },
   minecraft: { enabled: false },
@@ -102,7 +102,7 @@ describe('config.yml', () => {
   test('refuse un chemin absolu', () => {
     const issue = failure(CoreConfigSchema, {
       ...VALID_CONFIG,
-      database: { file: 'C:\\cubex\\base.sqlite' },
+      database: { ...VALID_CONFIG.database, file: 'C:\\cubex\\base.sqlite' },
     });
 
     assert.match(issue.message, /chemin relatif/);

@@ -20,6 +20,7 @@ commands:
     allowed_roles: ["${ID}"]
 database:
   file: "data/cubex.sqlite"
+  busy_timeout_ms: 5000
 logging:
   level: "info"
   directory: "logs"
