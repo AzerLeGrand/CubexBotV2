@@ -106,6 +106,41 @@ le destinataire, ni selon la situation, ni selon la langue. Un texte qui
 répond à une action, décrit un état ou s'adresse à un membre va dans
 `messages.yml`, sans exception.
 
+## Portabilité : jamais de primitive dépendante de l'environnement
+
+Toute valeur venue d'un fichier versionné — `config.yml`, `messages.yml`,
+`embeds.yml`, une migration SQL, un export de module — est lue par le poste
+Windows **et** par le VPS Debian. Elle doit être validée, comparée et triée
+de façon identique des deux côtés.
+
+**N'utilisez jamais une primitive dont le comportement dépend de la plateforme
+ou de la locale d'exécution** pour juger une telle valeur.
+
+| À proscrire | Pourquoi | À la place |
+|-------------|----------|------------|
+| `path.isAbsolute()` | `C:\data` est absolu sous Windows, relatif sous Linux | `isAbsolutePath()` de `utils/paths.js`, qui couvre les deux conventions |
+| `String.localeCompare()` | dépend de l'ICU chargée | comparaison binaire `a < b ? -1 : 1` |
+| Contenu de fichier brut haché | Git livre le même fichier en CRLF ou en LF | normaliser les fins de ligne avant l'empreinte |
+| `toLocaleString()`, `toLocaleDateString()` | dépend de la locale du processus | `Intl` avec locale et fuseau explicites |
+| `getHours()`, `getDate()`, `getMonth()` | lisent des composantes civiles selon le fuseau système | `bot.timezone`, toujours |
+| Chemin d'import dont la casse diffère du fichier | Windows est insensible à la casse, Linux non | respecter la casse exacte, y compris dans les chemins construits |
+| `\` comme séparateur dans une valeur configurée | sous Linux, `data\bot.db` est un nom de fichier, pas un chemin | `/`, que Node accepte des deux côtés |
+
+Le symptôme est toujours le même : le code passe sur une machine et échoue sur
+l'autre, ou pire, passe sur les deux en produisant des résultats différents.
+
+Trois occurrences relevées avant que la règle ne soit écrite : `localeCompare`
+sur l'ordre des propriétaires de migrations, l'empreinte des migrations sensible
+au CRLF, et `path.isAbsolute()` sur les chemins de `config.yml`. La troisième
+n'a été vue qu'en exécutant les tests sur le VPS.
+
+**Corollaire pour les tests :** un test qui valide une valeur portable doit
+couvrir les deux formes, pas seulement celle de la machine qui l'écrit.
+
+**Corollaire pour le déploiement :** `npm test` s'exécute sur la machine cible
+avant le premier démarrage. C'est le seul endroit où une divergence de plateforme
+se prouve.
+
 ## Détecteur de secrets : motifs en dur
 
 Deuxième exception assumée, distincte de la précédente. Les motifs de

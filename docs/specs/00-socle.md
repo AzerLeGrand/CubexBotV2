@@ -59,6 +59,24 @@ fichiers `01-*.md` à `06-*.md`.
 
 Aucun service web n'est exposé. Le pare-feu n'autorise que SSH en entrée.
 
+### Déploiement
+
+Le poste de développement est sous Windows, la cible sous Debian. `node_modules`
+ne se transfère pas : le déploiement passe par `git pull` puis `npm ci`.
+
+**`npm test` s'exécute sur la machine cible avant tout démarrage.** Ce n'est pas
+une précaution de principe : une divergence de plateforme ne se prouve que là. Le
+premier déploiement a révélé un `path.isAbsolute()` qui rendait `true` sous
+Windows et `false` sous Linux sur un chemin en `C:\`, invisible sur les
+311 tests du poste de développement.
+
+Les identifiants se remplissent **en local puis se commitent**, jamais en éditant
+`config.yml` sur le VPS : l'inverse créerait une divergence Git à chaque
+déploiement.
+
+**Une seule instance à la fois.** Deux processus partageant le même jeton
+répondent tous deux aux mêmes interactions.
+
 ### Arrêt propre et pm2
 
 **pm2 envoie `SIGINT` par défaut, pas `SIGTERM`, et attend 1600 ms avant
