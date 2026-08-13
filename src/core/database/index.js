@@ -1,9 +1,9 @@
 import { mkdirSync } from 'node:fs';
-import { dirname, isAbsolute } from 'node:path';
+import { dirname } from 'node:path';
 
 import BetterSqlite3 from 'better-sqlite3';
 
-import { fromRoot } from '../../utils/paths.js';
+import { fromRoot, isAbsolutePath } from '../../utils/paths.js';
 import { CORE_OWNER, MigrationError, runMigrations } from './migrations.js';
 
 /**
@@ -32,7 +32,11 @@ const DEFAULT_BUSY_TIMEOUT_MS = 5_000;
  * @param {number} [options.busyTimeoutMs] issu de `config.yml`
  */
 export function openDatabase({ file, busyTimeoutMs = DEFAULT_BUSY_TIMEOUT_MS }) {
-  const path = isAbsolute(file) ? file : fromRoot(file);
+  // Détection portable : un `C:\…` arrivé jusqu'ici sur Linux ne doit pas être
+  // pris pour un chemin relatif et collé derrière la racine du projet. La
+  // validation le refuse en amont ; ceci évite qu'un appel direct produise un
+  // chemin absurde plutôt qu'une erreur lisible.
+  const path = isAbsolutePath(file) ? file : fromRoot(file);
 
   // Le dossier data/ est exclu de Git : il n'existe pas sur une installation
   // neuve.

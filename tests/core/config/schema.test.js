@@ -99,13 +99,51 @@ describe('config.yml', () => {
     assert.match(issue.message, /"public"/);
   });
 
-  test('refuse un chemin absolu', () => {
+  test('refuse un chemin absolu, quelle que soit la convention', () => {
+    // config.yml est versionné et partagé entre le poste Windows et le VPS
+    // Debian : un C:\ commité depuis Windows doit être refusé des deux côtés.
+    // path.isAbsolute() seul ne le voit pas sous Linux.
+    const absolus = [
+      'C:\\cubex\\base.sqlite',
+      'C:/cubex/base.sqlite',
+      'c:/cubex/base.sqlite',
+      '/var/lib/cubex/base.sqlite',
+      '\\\\serveur\\partage\\base.sqlite',
+      'C:base.sqlite',
+    ];
+
+    for (const file of absolus) {
+      const issue = failure(CoreConfigSchema, {
+        ...VALID_CONFIG,
+        database: { ...VALID_CONFIG.database, file },
+      });
+
+      assert.match(issue.message, /chemin relatif|séparateur/, `chemin ${file}`);
+    }
+  });
+
+  test('refuse un séparateur antislash dans un chemin relatif', () => {
+    // Sous Linux, `data\cubex.sqlite` est un nom de fichier contenant un
+    // antislash, pas un chemin. `/` fonctionne des deux côtés.
     const issue = failure(CoreConfigSchema, {
       ...VALID_CONFIG,
-      database: { ...VALID_CONFIG.database, file: 'C:\\cubex\\base.sqlite' },
+      database: { ...VALID_CONFIG.database, file: 'data\\cubex.sqlite' },
     });
 
-    assert.match(issue.message, /chemin relatif/);
+    assert.match(issue.message, /séparateur de chemin non portable/);
+  });
+
+  test('accepte un chemin relatif à séparateurs avant', () => {
+    for (const file of ['data/cubex.sqlite', 'data/sous-dossier/base.sqlite', 'base.sqlite']) {
+      assert.equal(
+        CoreConfigSchema.safeParse({
+          ...VALID_CONFIG,
+          database: { ...VALID_CONFIG.database, file },
+        }).success,
+        true,
+        `chemin ${file}`,
+      );
+    }
   });
 
   test('refuse un fuseau horaire inconnu', () => {

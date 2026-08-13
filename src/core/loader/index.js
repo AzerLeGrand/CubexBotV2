@@ -1,9 +1,9 @@
 import { readdirSync, statSync } from 'node:fs';
-import { isAbsolute, join, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { AppError } from '../errors/app-error.js';
-import { fromRoot } from '../../utils/paths.js';
+import { fromRoot, isAbsolutePath } from '../../utils/paths.js';
 
 /**
  * Chargeur de modules (socle §4).
@@ -172,5 +172,7 @@ function resolveMigrations(value, moduleDir, fault) {
     fault('« migrations » doit être un chemin de dossier');
   }
 
-  return isAbsolute(path) ? path : resolve(moduleDir, path);
+  // Détection portable : `export const migrations` vit dans un fichier
+  // versionné, jugé de la même façon sur les deux plateformes.
+  return isAbsolutePath(path) ? path : resolve(moduleDir, path);
 }
