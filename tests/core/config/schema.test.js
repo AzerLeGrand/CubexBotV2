@@ -13,11 +13,11 @@ import { MessagesSchema } from '../../../src/core/config/schema/messages.schema.
 const ID = '123456789012345678';
 
 const VALID_CONFIG = {
-  bot: { guild_id: ID },
+  bot: { guild_id: ID, timezone: 'Europe/Paris' },
   commands: { reload: { allowed_roles: [ID] } },
   database: { file: 'data/cubex.sqlite' },
-  logging: { level: 'info', directory: 'logs', retention_days: 30 },
-  purge: { hour: 4, timezone: 'Europe/Paris' },
+  logging: { level: 'info', directory: 'logs', file_prefix: 'cubex', retention_days: 30 },
+  purge: { hour: 4 },
   minecraft: { enabled: false },
 };
 
@@ -73,7 +73,7 @@ describe('config.yml', () => {
   test('refuse une clé inconnue à l\'intérieur d\'une section', () => {
     const issue = failure(CoreConfigSchema, {
       ...VALID_CONFIG,
-      bot: { guild_id: ID, salon: ID },
+      bot: { ...VALID_CONFIG.bot, salon: ID },
     });
 
     assert.equal(issue.code, 'unrecognized_keys');
@@ -111,21 +111,35 @@ describe('config.yml', () => {
   test('refuse un fuseau horaire inconnu', () => {
     const issue = failure(CoreConfigSchema, {
       ...VALID_CONFIG,
-      purge: { hour: 4, timezone: 'Europe/Pariss' },
+      bot: { guild_id: ID, timezone: 'Europe/Pariss' },
     });
 
     assert.match(issue.message, /fuseau horaire/);
+    assert.deepEqual(issue.path, ['bot', 'timezone']);
   });
 
   test('accepte minuit mais refuse 24 heures', () => {
     assert.equal(
-      CoreConfigSchema.safeParse({ ...VALID_CONFIG, purge: { hour: 0, timezone: 'UTC' } }).success,
+      CoreConfigSchema.safeParse({ ...VALID_CONFIG, purge: { hour: 0 } }).success,
       true,
     );
     assert.equal(
-      CoreConfigSchema.safeParse({ ...VALID_CONFIG, purge: { hour: 24, timezone: 'UTC' } }).success,
+      CoreConfigSchema.safeParse({ ...VALID_CONFIG, purge: { hour: 24 } }).success,
       false,
     );
+  });
+
+  test('refuse un préfixe de fichier de journal mal formé', () => {
+    for (const file_prefix of ['Cubex', 'cubex_bot', '1cubex', '']) {
+      assert.equal(
+        CoreConfigSchema.safeParse({
+          ...VALID_CONFIG,
+          logging: { ...VALID_CONFIG.logging, file_prefix },
+        }).success,
+        false,
+        `le préfixe ${file_prefix} aurait dû être refusé`,
+      );
+    }
   });
 
   test('refuse une rétention nulle', () => {

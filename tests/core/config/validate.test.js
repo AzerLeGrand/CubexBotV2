@@ -9,11 +9,11 @@ import { validate } from '../../../src/core/config/validate.js';
 const ID = '123456789012345678';
 
 const CONFIG = {
-  bot: { guild_id: ID },
+  bot: { guild_id: ID, timezone: 'Europe/Paris' },
   commands: { reload: { allowed_roles: [ID] } },
   database: { file: 'data/cubex.sqlite' },
-  logging: { level: 'info', directory: 'logs', retention_days: 30 },
-  purge: { hour: 4, timezone: 'Europe/Paris' },
+  logging: { level: 'info', directory: 'logs', file_prefix: 'cubex', retention_days: 30 },
+  purge: { hour: 4 },
   minecraft: { enabled: false },
 };
 
@@ -179,7 +179,11 @@ describe('validate', () => {
     const result = validate(
       files({
         // secret + schéma invalide dans le même fichier
-        config: { ...CONFIG, api_key: 'x', bot: { guild_id: 123456789012345678 } },
+        config: {
+          ...CONFIG,
+          api_key: 'x',
+          bot: { guild_id: 123456789012345678, timezone: 'Europe/Paris' },
+        },
         // renvoi mort
         embeds: {
           ...EMBEDS,
@@ -228,7 +232,7 @@ describe('validate', () => {
   });
 
   test('traduit une clé inconnue en la nommant', () => {
-    const { errors } = validate(files({ config: { ...CONFIG, bot: { guild_id: ID, salon: ID } } }));
+    const { errors } = validate(files({ config: { ...CONFIG, bot: { ...CONFIG.bot, salon: ID } } }));
 
     assert.equal(errors.length, 1);
     assert.match(errors[0].message, /clé inconnue/);

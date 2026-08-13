@@ -36,9 +36,28 @@ retention: [
 ]
 ```
 
-Une tâche quotidienne à 4h00 (Europe/Paris) parcourt le registre et supprime.
-Une erreur sur une table n'interrompt pas le traitement des autres. Le compte
-rendu indique le nombre de lignes supprimées par table.
+Une tâche quotidienne à 4h00 (fuseau `bot.timezone`) parcourt le registre et
+supprime. Une erreur sur une table n'interrompt pas le traitement des autres. Le
+compte rendu indique le nombre de lignes supprimées par table.
+
+### Exception : les fichiers de journaux
+
+**Les journaux sur disque ne passent pas par le registre.** Ils sont supprimés
+par leur propre transport, dans `src/core/logging/`, au moment où le fichier du
+jour tourne.
+
+Le registre est typé pour du SQL — `table`, `date_column`, `retention_key`. Lui
+greffer une seconde nature pour un unique cas de fichiers le compliquerait plus
+qu'il ne le simplifierait, et la tâche de 4h00 devrait alors connaître deux
+mécanismes de suppression au lieu d'un.
+
+Ce qui ne change pas : **la durée vient de `config.yml`** comme tout le reste,
+par `logging.retention_days`. Rien n'est codé en dur, rien ne vit dans
+`/etc/logrotate.d/`. C'est aussi pourquoi `logrotate` a été écarté — il aurait
+sorti un réglage fonctionnel du dépôt et fait diverger le poste de
+développement de la production.
+
+Le socle §10 décrit le registre ; cette exception est la seule.
 
 ## Exclusions de purge
 

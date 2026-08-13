@@ -14,6 +14,7 @@ const AUTRE_ID = '987654321098765432';
 const CONFIG = `
 bot:
   guild_id: "${ID}"
+  timezone: "Europe/Paris"
 commands:
   reload:
     allowed_roles: ["${ID}"]
@@ -22,10 +23,10 @@ database:
 logging:
   level: "info"
   directory: "logs"
+  file_prefix: "cubex"
   retention_days: 30
 purge:
   hour: 4
-  timezone: "Europe/Paris"
 minecraft:
   enabled: false
 `;

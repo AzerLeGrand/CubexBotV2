@@ -15,6 +15,9 @@
 bot:
   # Serveur Cubex. Le bot n'opère que sur celui-ci.
   guild_id: "000000000000000000"
+  # Fuseau de référence pour tout le bot : rotation des journaux et purge
+  # nocturne tombent sur la même journée civile.
+  timezone: "Europe/Paris"
 
 # Permissions par commande. Une liste vide est refusée : pour ouvrir une
 # commande à tous, écrire le littéral "public".
@@ -32,13 +35,15 @@ logging:
   # error | warn | info | debug
   level: "info"
   directory: "logs"
-  # Durée de conservation des journaux sur disque.
+  # Les fichiers sont nommés <prefix>-AAAA-MM-JJ.log.
+  file_prefix: "cubex"
+  # Durée de conservation des journaux sur disque. Appliquée par le transport
+  # lui-même, pas par le registre de purge — voir .claude/rules/database.md.
   retention_days: 30
 
 purge:
   # Exécution quotidienne, au creux de fréquentation.
   hour: 4
-  timezone: "Europe/Paris"
 
 minecraft:
   # Le pont vers le serveur Minecraft est reporté hors v1. Les commandes qui en

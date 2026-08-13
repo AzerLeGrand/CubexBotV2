@@ -69,6 +69,10 @@ const CommandSchema = z.strictObject({ allowed_roles: allowedRoles() });
 const CORE_SECTIONS = {
   bot: z.strictObject({
     guild_id: snowflake(),
+    // Un seul fuseau pour tout le bot : la rotation des journaux et la purge
+    // nocturne doivent tomber sur la même journée civile, sinon un fichier et
+    // les lignes qu'il décrit se réfèrent à deux jours différents.
+    timezone: timezone(),
   }),
 
   commands: z.object({ reload: CommandSchema }).catchall(CommandSchema),
@@ -82,12 +86,14 @@ const CORE_SECTIONS = {
       error: 'niveau attendu : error, warn, info ou debug',
     }),
     directory: relativePath(),
+    file_prefix: z
+      .string({ error: 'préfixe des fichiers de journal attendu' })
+      .regex(/^[a-z][a-z0-9-]*$/, 'préfixe attendu : minuscules, chiffres et tirets'),
     retention_days: duration(),
   }),
 
   purge: z.strictObject({
     hour: hourOfDay(),
-    timezone: timezone(),
   }),
 
   minecraft: z.strictObject({
