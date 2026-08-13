@@ -3,6 +3,7 @@ paths:
   - "src/modules/**/*.js"
   - "src/core/commands/**/*.js"
   - "src/core/embeds/**/*.js"
+  - "src/utils/template.js"
 ---
 
 # Modules Discord
@@ -83,14 +84,39 @@ Pied de page commun : `Cubex` et un horodatage.
 ## Variables de gabarit
 
 Accolade simple, noms en **anglais** : `{username}`, `{number}`, `{reason}`.
+Motif reconnu : `{[a-z][a-z0-9_]*}`. Tout le reste traverse intact — `{UPPER}`,
+`{ username }`, `{123}`, `{"a": 1}` ne sont ni substitués ni signalés.
 
-Le moteur de substitution est **partagé** entre `embeds.yml`, `messages.yml` et
+Le moteur vit dans `src/utils/template.js` et non dans le module de
+configuration : il est **partagé** entre `embeds.yml`, `messages.yml` et
 certaines valeurs de `config.yml` — le gabarit de nommage des salons de ticket,
-`ticket-{number}-{username}`, en est l'exemple. Ce n'est pas un service exclusif
-du moteur d'embeds.
+`ticket-{number}-{username}`, en est l'exemple.
 
-Une variable non fournie doit produire une erreur journalisée, pas un affichage
+### Une seule passe, jamais récursive
+
+Une valeur substituée n'est jamais re-rendue. Sans cela, un pseudo Discord
+choisi exprès — contenant `{token}` — ferait apparaître une autre variable du
+contexte. Ne pas « améliorer » ce point.
+
+### Variable manquante
+
+Le marqueur reste visible dans le texte, et le contrat retourne `{ text,
+missing }` à l'appelant, qui journalise. Un `{username}` resté à l'écran se
+remarque ; une phrase amputée passe inaperçue. Le socle §9 interdit l'affichage
 vide silencieux.
+
+Pas d'import du logger dans le moteur.
+
+### Pas de séquence d'échappement
+
+Il n'existe aujourd'hui aucun moyen d'écrire `{username}` littéralement. Aucun
+texte du bot n'en a besoin.
+
+**Condition de déclenchement, si le besoin apparaît :** un texte destiné à
+expliquer la syntaxe au staff — les textes d'aide de la modale d'embeds en
+phase 5 sont le candidat probable. L'ajout d'un `{{` d'échappement reste
+rétro-compatible tant qu'aucun texte existant ne contient `{{`, ce qui se
+vérifie par une recherche avant de le poser.
 
 ## Commandes
 
