@@ -58,8 +58,57 @@ export class ConfigValidationError extends Error {
 }
 
 /**
+ * Rendu compact tenant dans un budget de caractères, pour le message que
+ * `/reload` renvoie au demandeur.
+ *
+ * La troncature se fait ICI, avant que le texte ne soit injecté dans le
+ * gabarit : substituer d'abord puis couper ferait dépasser la limite de la
+ * description d'embed sans que rien ne le rattrape, et couperait au milieu
+ * d'une ligne.
+ *
+ * Aucune phrase de troncature n'est produite : `shown` et `total` sont
+ * retournés pour que l'enveloppe, elle, vienne de messages.yml. Le hint reste
+ * en console — mieux vaut afficher dix anomalies sans conseil que trois avec.
+ *
+ * @param {ConfigError[]} errors
+ * @param {number} budget caractères restants pour la liste SEULE : la limite de
+ *   la destination moins la longueur de l'enveloppe déjà rendue. Rendre
+ *   l'enveloppe d'abord, la mesurer, puis appeler cette fonction. Lui passer la
+ *   limite entière fait déborder au moment de la substitution, de toute la
+ *   longueur de l'enveloppe.
+ * @returns {{ text: string, shown: number, total: number, truncated: boolean }}
+ */
+export function formatErrorsWithin(errors, budget) {
+  const lines = [];
+  let used = 0;
+
+  for (const error of errors) {
+    const line = `${error.location} — ${error.message}`;
+    const cost = line.length + (lines.length > 0 ? 1 : 0);
+
+    if (used + cost > budget) break;
+
+    lines.push(line);
+    used += cost;
+  }
+
+  // Aucune anomalie ne tient : en montrer une coupée vaut mieux qu'un vide,
+  // qui laisserait croire que la configuration est saine.
+  if (lines.length === 0 && errors.length > 0 && budget > 1) {
+    lines.push(`${errors[0].location} — ${errors[0].message}`.slice(0, budget - 1) + '…');
+    return { text: lines[0], shown: 0, total: errors.length, truncated: true };
+  }
+
+  return {
+    text: lines.join('\n'),
+    shown: lines.length,
+    total: errors.length,
+    truncated: lines.length < errors.length,
+  };
+}
+
+/**
  * Rendu console, affiché au démarrage avant l'arrêt du processus.
- * Le rendu Discord du rechargement à chaud est ajouté avec la commande.
  */
 export function formatErrors(errors, summary = 'Configuration invalide') {
   const lines = [`${summary} — ${errors.length} ${plural(errors.length, 'erreur')} :`, ''];

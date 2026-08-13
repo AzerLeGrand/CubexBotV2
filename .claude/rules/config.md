@@ -8,12 +8,12 @@ paths:
 
 ## Trois fichiers, séparés par nature
 
-| Fichier        | Contenu                                | Interdit                            |
-| -------------- | -------------------------------------- | ----------------------------------- |
-| `config.yml`   | identifiants, seuils, délais, bascules | tout texte destiné à un utilisateur |
-| `messages.yml` | textes destinés aux utilisateurs       | réglages techniques                 |
-| `embeds.yml`   | gabarits d'affichage                   | logique                             |
-| `.env`         | secrets                                | réglages fonctionnels               |
+| Fichier | Contenu | Interdit |
+|---------|---------|----------|
+| `config.yml` | identifiants, seuils, délais, bascules | tout texte destiné à un utilisateur |
+| `messages.yml` | textes destinés aux utilisateurs | réglages techniques |
+| `embeds.yml` | gabarits d'affichage | logique |
+| `.env` | secrets | réglages fonctionnels |
 
 Les trois YAML sont versionnés (dépôt privé). `.env` est exclu de Git,
 `.env.example` est versionné avec des valeurs vides.
@@ -28,8 +28,8 @@ Toujours en chaîne. La validation doit :
 
 ```yaml
 roles:
-  member: "1234567890123456789" # correct
-  admin: 1234567890123456789 # refusé au démarrage
+  member: "1234567890123456789"   # correct
+  admin: 1234567890123456789      # refusé au démarrage
 ```
 
 L'erreur `tickets.categories.0.ping_role_ids.0: Expected string, received number`
@@ -74,7 +74,7 @@ personnelle conservée plus longtemps que prévu sans que personne ne le sache.
 const { tickets } = ctx.config.get();
 
 // CORRECT — lecture au moment de l'usage
-ctx.config.get("tickets.max_open_per_user");
+ctx.config.get('tickets.max_open_per_user');
 ```
 
 ## Exception à la règle « aucun texte codé en dur »
@@ -84,12 +84,12 @@ de chargement et de validation sont écrits en dur dans le code, parce qu'ils
 s'affichent précisément quand `messages.yml` peut être inchargeable :
 l'indirection créerait une dépendance circulaire.
 
-| Texte                                                                    | Origine        |
-| ------------------------------------------------------------------------ | -------------- |
-| Erreur de chargement ou de validation (console, administrateur)          | codée en dur   |
-| Corps technique d'une erreur : chemin de la clé, contrainte, instruction | codé en dur    |
-| Enveloppe du message de `/reload` renvoyé dans Discord                   | `messages.yml` |
-| Tout autre texte, partout ailleurs                                       | `messages.yml` |
+| Texte | Origine |
+|-------|---------|
+| Erreur de chargement ou de validation (console, administrateur) | codée en dur |
+| Corps technique d'une erreur : chemin de la clé, contrainte, instruction | codé en dur |
+| Enveloppe du message de `/reload` renvoyé dans Discord | `messages.yml` |
+| Tout autre texte, partout ailleurs | `messages.yml` |
 
 Au rechargement à chaud, l'ancienne configuration est toujours en mémoire :
 `messages.yml` est donc disponible et doit être utilisé pour l'enveloppe. Seul le
@@ -97,7 +97,29 @@ diagnostic reste en dur.
 
 Ne pas étendre cette exception à un autre module.
 
-## Convention \*\_key
+### Constante d'identité
+
+Critère : un texte reste en clair dans `embeds.yml` s'il est une constante
+d'identité — nom de marque, mention légale invariante — et non un message
+adressé à quelqu'un. `footer.text: "Cubex"` en relève : il ne varie ni selon
+le destinataire, ni selon la situation, ni selon la langue. Un texte qui
+répond à une action, décrit un état ou s'adresse à un membre va dans
+`messages.yml`, sans exception.
+
+## Détecteur de secrets : motifs en dur
+
+Deuxième exception assumée, distincte de la précédente. Les motifs de
+`secrets.js` ne sont **pas** configurables.
+
+Rendre un détecteur réglable depuis le fichier même qu'il surveille permettrait
+de le désactiver depuis l'endroit qu'il protège. Une configuration compromise
+pourrait vider la liste des motifs, et le démarrage réussirait.
+
+Corollaire : la valeur détectée n'est jamais citée dans le message d'erreur. Le
+message nomme la clé fautive et la nature du soupçon, rien d'autre — ces
+journaux partiront vers Discord en phase 6.
+
+## Convention *_key
 
 Aucun texte destiné à un utilisateur ne figure dans `config.yml`. Un champ qui
 désignerait un texte porte le suffixe `_key` et pointe vers `messages.yml` :
@@ -147,10 +169,3 @@ Commande réservée aux rôles Owner et Admin (liste configurable).
 
 Si la nouvelle configuration est invalide : **conserver l'ancienne en mémoire**,
 continuer de tourner, renvoyer la liste des erreurs au demandeur.
-
-### Nom propre invariant
-
-Un nom de marque affiché tel quel — `footer.text: "Cubex"` — reste en clair.
-Critère : un texte que personne ne voudra jamais reformuler sans toucher au code
-n'est pas un texte au sens de cette règle. Dès qu'il devient une phrase
-(`Cubex • Serveur FFA`), il passe en `text_key`

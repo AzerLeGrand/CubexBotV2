@@ -29,3 +29,6 @@ config:
 
       {count} anomalie(s) relevée(s) :
       {errors}
+    # Ajouté à la description quand la liste ne tient pas dans un embed. La
+    # troncature est faite avant substitution, le compte total reste exact.
+    truncated: "{shown} anomalies affichées sur {count}. Le détail complet est dans les journaux."
