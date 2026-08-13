@@ -196,6 +196,7 @@ Chaque dossier sous `src/modules/` expose la même interface :
 | `events` | non | écouteurs d'événements Discord |
 | `migrations` | non | fichiers SQL du module |
 | `retention` | non | déclarations pour le registre de purge |
+| `erasure` | non | déclarations pour le registre d'effacement |
 | `init(ctx)` | non | initialisation, reçoit le contexte du noyau |
 
 `init` est facultative : un module purement déclaratif — des migrations et des
@@ -283,11 +284,40 @@ de l'API Discord.
 
 | Situation | Comportement |
 |-----------|--------------|
-| Référence introuvable | Avertissement journalisé, fonctionnalité concernée désactivée |
+| Référence introuvable, capacité `critical: false` | Avertissement journalisé, capacité désactivée |
+| Référence introuvable, capacité `critical: true` | Avertissement journalisé, **module entier désactivé** |
 | Référence valide | Aucun message |
 
-Le bot ne s'arrête pas. Une fonctionnalité désactivée pour cette raison répond aux
-commandes qu'elle est indisponible, sans planter.
+Le bot ne s'arrête dans aucun cas. Une fonctionnalité désactivée pour cette raison
+répond aux commandes qu'elle est indisponible, sans planter.
+
+**`critical` a un effet ou n'existe pas.** Un champ lu et journalisé mais sans
+conséquence laisse croire à une garantie qui n'existe pas : quelqu'un le
+déclarerait `true` en pensant s'être protégé. L'appartenance d'une capacité à un
+module est connue par construction, puisque c'est le module qui exporte son
+manifeste.
+
+**Les capacités d'une collection dérivent de la clé `id` de chaque entrée**,
+jamais d'un index positionnel : `tickets.categories.0.category_id` casserait
+silencieusement au premier réordonnancement du fichier.
+
+La vérification passe par une récupération auprès de l'API, jamais par le cache :
+au démarrage, le cache d'un salon jamais vu est vide, et s'y fier signalerait
+comme introuvables des références parfaitement valides.
+
+Une catégorie est vérifiée **comme catégorie**, pas seulement comme salon
+existant. Accepter un salon textuel là où une catégorie est attendue laisserait le
+module tickets tenter d'y créer des salons, et l'échec surviendrait bien plus tard
+et bien plus loin de sa cause.
+
+L'état est remis à zéro avant chaque passage. Sans cela, un rechargement à chaud
+ne pourrait que dégrader la situation : une capacité désactivée le resterait même
+après le retour de sa référence.
+
+Une capacité jamais déclarée est considérée **active**. L'inverse ferait taire
+toute fonctionnalité dont on aurait oublié la déclaration, alors que rien ne
+prouve qu'elle soit en défaut — un oubli de déclaration est un manque de
+surveillance, pas une panne.
 
 ### 5.6 Rechargement à chaud
 
@@ -551,6 +581,24 @@ Une commande de suppression sur demande d'un membre doit être possible dès la
 conception. Les modalités relèvent du volet légal, mais l'architecture doit
 permettre de retrouver et supprimer toutes les données d'un identifiant Discord
 donné, à travers l'ensemble des tables.
+
+**Un registre déclaratif, symétrique de celui de la purge.** Aucun module n'écrit
+sa propre logique d'effacement. Chaque module déclare :
+
+| Champ | Rôle |
+|-------|------|
+| `table` | table concernée |
+| `user_column` | colonne portant l'identifiant Discord du membre |
+| `strategy` | `delete` ou `anonymize` |
+
+La distinction de stratégie est nécessaire : les sanctions sont conservées sans
+limite et exclues de la purge. Un effacement qui les supprimerait viderait la
+mémoire de modération. Elles s'anonymisent — l'identifiant du membre est
+remplacé, la sanction subsiste.
+
+Ce registre doit exister **avant que le premier module déclare quoi que ce soit**,
+faute de quoi chaque phase écrira sa propre logique. La commande slash qui
+l'expose peut venir plus tard ; le registre, non.
 
 ---
 

@@ -7,6 +7,9 @@
 # fournie à l'exécution produit une erreur journalisée, jamais un affichage vide.
 
 commands:
+  reload:
+    # Visible par tous les membres dans l'interface de Discord.
+    description: "Recharge les fichiers de configuration sans redémarrer le bot."
   denied:
     title: "Accès refusé"
     description: "Cette commande est réservée à l'équipe."

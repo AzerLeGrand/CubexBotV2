@@ -139,6 +139,17 @@ export class Configuration {
   }
 
   /**
+   * Arbre complet de `config.yml`.
+   *
+   * Réservé à ce qui doit parcourir la configuration plutôt que la lire — la
+   * vérification des références Discord, notamment. Les lectures ordinaires
+   * passent par `get()`, seul moyen de ne pas figer une valeur.
+   */
+  get raw() {
+    return this.#store.config;
+  }
+
+  /**
    * Rend un texte de `messages.yml`.
    *
    * Consomme le `missing` du moteur de substitution et le journalise : le

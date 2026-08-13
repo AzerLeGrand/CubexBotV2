@@ -139,7 +139,7 @@ function normalize(loaded, name, moduleDir) {
     fault(`son export « name » vaut ${JSON.stringify(loaded.name)}, attendu ${JSON.stringify(name)}`);
   }
 
-  for (const field of ['commands', 'events', 'retention']) {
+  for (const field of ['commands', 'events', 'retention', 'erasure', 'capabilities']) {
     if (loaded[field] !== undefined && !Array.isArray(loaded[field])) fault(`« ${field} » doit être un tableau`);
   }
 
@@ -153,6 +153,10 @@ function normalize(loaded, name, moduleDir) {
     commands: loaded.commands ?? [],
     events: loaded.events ?? [],
     retention: loaded.retention ?? [],
+    /** Déclarations pour le registre d'effacement (socle §10). */
+    erasure: loaded.erasure ?? [],
+    /** Manifeste des capacités et des références Discord dont elles dépendent. */
+    capabilities: loaded.capabilities ?? [],
     migrations: resolveMigrations(loaded.migrations, moduleDir, fault),
     init: loaded.init ?? null,
   };

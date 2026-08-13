@@ -94,6 +94,43 @@ describe('CapabilityRegistry', () => {
     assert.equal(registry.list().length, 2, 'les capacités restent déclarées');
   });
 
+  test('désactive un module entier et toutes ses capacités', () => {
+    const registry = new CapabilityRegistry()
+      .declare('tickets.panel', { module: 'tickets' })
+      .declare('tickets.category.game', { module: 'tickets' })
+      .declare('logs.messages', { module: 'logs' });
+
+    registry.disableModule('tickets', 'salon de support introuvable');
+
+    assert.equal(registry.isModuleEnabled('tickets'), false);
+    assert.equal(registry.isActive('tickets.panel'), false);
+    assert.equal(registry.isActive('tickets.category.game'), false);
+    assert.equal(registry.isActive('logs.messages'), true, 'les autres modules continuent');
+    assert.match(registry.moduleReason('tickets'), /introuvable/);
+  });
+
+  test('une capacité déclarée après la désactivation de son module reste muette', () => {
+    // La double vérification évite de dépendre de l'ordre des appels.
+    const registry = new CapabilityRegistry();
+
+    registry.disableModule('tickets', 'motif');
+    registry.declare('tickets.tardive', { module: 'tickets' });
+
+    assert.equal(registry.isActive('tickets.tardive'), false);
+  });
+
+  test('reset réactive aussi les modules', () => {
+    const registry = new CapabilityRegistry()
+      .declare('tickets.panel', { module: 'tickets' })
+      .disableModule('tickets', 'motif');
+
+    registry.reset();
+
+    assert.equal(registry.isModuleEnabled('tickets'), true);
+    assert.equal(registry.isActive('tickets.panel'), true);
+    assert.deepEqual(registry.disabledModules(), []);
+  });
+
   test('list rend des copies, pas l\'état interne', () => {
     const registry = new CapabilityRegistry().declare('a');
 
@@ -195,6 +232,42 @@ describe('verifyDiscordRefs', () => {
 
     assert.deepEqual(result.disabled, ['a']);
     assert.equal(result.checked, 2, 'la déclaration suivante est vérifiée');
+  });
+
+  test('une référence critique désactive le module entier, pas le bot', async () => {
+    const declarations = [
+      {
+        id: 'tickets.panel',
+        module: 'tickets',
+        critical: true,
+        refs: [{ kind: 'channel', path: 'tickets.categories[store].category_id' }],
+      },
+      {
+        id: 'tickets.category.game',
+        module: 'tickets',
+        refs: [{ kind: 'category', path: 'tickets.categories[game].category_id' }],
+      },
+      { id: 'moderation', module: 'sanctions', refs: [{ kind: 'role', path: 'roles.staff' }] },
+    ];
+
+    const { result, capabilities, logger } = await run(declarations, GUILD);
+
+    assert.deepEqual(result.disabledModules, ['tickets']);
+    assert.equal(capabilities.isActive('tickets.category.game'), false, 'le module se tait en bloc');
+    assert.equal(capabilities.isActive('moderation'), true, 'les autres modules continuent');
+    assert.equal(logger.of('warn')[0].context.scope, 'module');
+  });
+
+  test('une référence critique sans module ne désactive que sa capacité, et le dit', async () => {
+    const declarations = [
+      { id: 'core.log_channel', critical: true, refs: [{ kind: 'channel', path: 'tickets.categories[store].category_id' }] },
+    ];
+
+    const { result, capabilities, logger } = await run(declarations, GUILD);
+
+    assert.deepEqual(result.disabledModules, []);
+    assert.equal(capabilities.isActive('core.log_channel'), false);
+    assert.match(logger.of('error')[0].message, /critique sans module/);
   });
 
   test('survit à une API qui lève au lieu de rendre null', async () => {

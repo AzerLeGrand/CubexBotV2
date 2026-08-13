@@ -220,7 +220,10 @@ export function createPurgeRegistry({ database, config, logger, shutdown = null 
     },
   };
 
-  shutdown?.register('purge', () => registry.stop());
+  // Plafond court et explicite : `stop()` est un `clearTimeout` synchrone. Lui
+  // laisser les 3 s par défaut gonflerait le budget d'arrêt sans raison, et
+  // l'invariant du socle §3 veut la somme des plafonds sous `kill_timeout`.
+  shutdown?.register('purge', () => registry.stop(), { timeoutMs: 1_000 });
 
   return registry;
 }

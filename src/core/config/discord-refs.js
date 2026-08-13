@@ -17,6 +17,7 @@ import { resolve } from './store.js';
  *
  * @typedef {object} CapabilityDeclaration
  * @property {string} id              identifiant de la capacité
+ * @property {string} [module]        module propriétaire, ajouté par le chargeur
  * @property {boolean} [critical]     l'absence désactive le module entier
  * @property {{ kind: 'role'|'channel'|'category', path: string }[]} refs
  *   `path` est un chemin pointé de `config.yml`. Une entrée de collection s'y
@@ -51,11 +52,12 @@ export async function verifyDiscordRefs({
   capabilities.reset();
 
   const disabled = [];
+  const disabledModules = [];
   const missingPaths = [];
   let checked = 0;
 
   for (const declaration of declarations) {
-    capabilities.declare(declaration.id);
+    capabilities.declare(declaration.id, { module: declaration.module ?? null });
 
     for (const ref of declaration.refs ?? []) {
       const value = resolve(config, ref.path);
@@ -80,16 +82,37 @@ export async function verifyDiscordRefs({
 
       if (found === null) {
         const reason = `${label(ref.kind)} introuvable (${ref.path})`;
+        const critical = declaration.critical === true && declaration.module != null;
 
         capabilities.disable(declaration.id, reason);
         disabled.push(declaration.id);
 
+        // `critical` désactive le module entier : le bot ne s'arrête pas, mais
+        // le module se tait plutôt que de fonctionner à moitié. Un champ lu
+        // sans effet laisserait croire à une garantie qui n'existe pas.
+        if (critical) {
+          capabilities.disableModule(declaration.module, reason);
+          if (!disabledModules.includes(declaration.module)) {
+            disabledModules.push(declaration.module);
+          }
+        }
+
         logger.warn('référence Discord introuvable, fonctionnalité désactivée', {
           capability: declaration.id,
+          module: declaration.module ?? null,
           kind: ref.kind,
           path: ref.path,
-          critical: declaration.critical === true,
+          critical,
+          scope: critical ? 'module' : 'capacité',
         });
+
+        if (declaration.critical === true && declaration.module == null) {
+          // Une capacité du noyau n'appartient à aucun module : il n'y a rien à
+          // désactiver en bloc, et le taire ferait croire au contraire.
+          logger.error('capacité critique sans module : seule la capacité est désactivée', {
+            capability: declaration.id,
+          });
+        }
 
         // Une seule référence manquante suffit à désactiver la capacité :
         // inutile de vérifier les suivantes de la même déclaration.
@@ -103,7 +126,7 @@ export async function verifyDiscordRefs({
     logger.debug('références Discord vérifiées', { checked });
   }
 
-  return { checked, disabled, missingPaths };
+  return { checked, disabled, disabledModules, missingPaths };
 }
 
 /**

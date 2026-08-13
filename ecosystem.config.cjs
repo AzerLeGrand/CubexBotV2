@@ -16,12 +16,13 @@
  * dans src/core/errors/handler.js) :
  *
  *   client Discord   3 s   fermeture du WebSocket, tributaire du réseau
+ *   purge            1 s   un clearTimeout synchrone, rien à attendre
  *   base SQLite      3 s   checkpoint WAL puis fermeture du fichier
  *   journaux         3 s   drain des tampons, en dernier pour relater le reste
  *   ------------------------
- *   pire cas         9 s
+ *   pire cas        10 s
  *
- * 12 s laissent 3 s de marge, utiles sur un VPS de 1,8 Go dont une partie du
+ * 12 s laissent 2 s de marge, utiles sur un VPS de 1,8 Go dont une partie du
  * processus peut être en swap. Ce délai n'est subi que si le bot ne sort pas de
  * lui-même : en fonctionnement normal, la sortie est immédiate.
  *

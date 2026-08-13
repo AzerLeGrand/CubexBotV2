@@ -141,6 +141,25 @@ Ces données ne sont jamais purgées automatiquement :
 | Exclusions de tickets actives | même raison |
 | Enregistrements d'embeds publiés | volume négligeable, valeur de traçabilité |
 
+## Registre d'effacement
+
+Symétrique du registre de purge, et tout aussi obligatoire : aucun module n'écrit
+sa propre logique d'effacement.
+
+```js
+erasure: [
+  { table: 'verification_history', user_column: 'user_id', strategy: 'delete' },
+  { table: 'sanctions',            user_column: 'user_id', strategy: 'anonymize' }
+]
+```
+
+`strategy` distingue ce qui disparaît de ce qui survit sans son porteur. Les
+sanctions sont conservées sans limite et exclues de la purge : les supprimer sur
+demande viderait la mémoire de modération. Elles s'anonymisent — l'identifiant est
+remplacé, la ligne subsiste.
+
+Même validation d'identifiants SQL que pour la purge.
+
 ## Droit à l'effacement
 
 L'architecture doit permettre de retrouver et supprimer toutes les données d'un
