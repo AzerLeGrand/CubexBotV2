@@ -75,10 +75,12 @@ describe('loadModules', () => {
     const [module] = await loadModules({ directory: root, logger: fakeLogger() });
 
     assert.deepEqual(module.commands, []);
+    assert.deepEqual(module.components, []);
     assert.deepEqual(module.events, []);
     assert.deepEqual(module.retention, []);
     assert.equal(module.migrations, null);
     assert.equal(module.init, null, 'un module déclaratif n\'écrit pas une init vide');
+    assert.equal(module.ready, null, 'ni un ready vide');
   });
 
   test('conserve ce que le module déclare', async (t) => {
@@ -89,7 +91,8 @@ describe('loadModules', () => {
         'logs',
         `export const retention = [{ table: 'log_events', date_column: 'created_at', retention_key: 'k' }];
          export const commands = [{ name: 'history' }];
-         export function init() { return 'monté'; }`,
+         export function init() { return 'monté'; }
+         export function ready() { return 'connecté'; }`,
       ),
     );
 
@@ -98,6 +101,7 @@ describe('loadModules', () => {
     assert.equal(module.retention[0].table, 'log_events');
     assert.equal(module.commands[0].name, 'history');
     assert.equal(module.init(), 'monté');
+    assert.equal(module.ready(), 'connecté');
   });
 
   test('résout un chemin de migrations relatif au dossier du module', async (t) => {
@@ -177,13 +181,19 @@ describe('validation de la forme', () => {
     await rejette(t, 'export const commands = [];', /export « name »/);
   });
 
-  test('commands, events ou retention qui ne sont pas des tableaux', async (t) => {
-    for (const field of ['commands', 'events', 'retention']) {
+  test('commands, components, events ou retention qui ne sont pas des tableaux', async (t) => {
+    for (const field of ['commands', 'components', 'events', 'retention']) {
       await rejette(t, MODULE('module', `export const ${field} = {};`), /doit être un tableau/);
     }
   });
 
-  test('init qui n\'est pas une fonction', async (t) => {
-    await rejette(t, MODULE('module', 'export const init = 42;'), /« init » doit être une fonction/);
+  test('init ou ready qui n\'est pas une fonction', async (t) => {
+    for (const hook of ['init', 'ready']) {
+      await rejette(
+        t,
+        MODULE('module', `export const ${hook} = 42;`),
+        new RegExp(`« ${hook} » doit être une fonction`),
+      );
+    }
   });
 });

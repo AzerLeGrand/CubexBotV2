@@ -83,9 +83,21 @@ data/           base SQLite (hors Git)
 logs/           journaux JSON (hors Git)
 ```
 
-Chaque module de `src/modules/` exporte : `name`, `commands`, `events`,
-`migrations`, `retention`, `init(ctx)`. Le noyau les découvre automatiquement,
-aucune liste à maintenir.
+Chaque module de `src/modules/` exporte : `name`, `commands`, `components`,
+`events`, `migrations`, `retention`, `erasure`, `capabilities`, `init(ctx)`,
+`ready(ctx)`. Le noyau les découvre automatiquement, aucune liste à maintenir.
+
+`init(ctx)` monte le module avant la connexion ; `ready(ctx)` fait ce qui exige
+l'API Discord, après la vérification des références et **au seul démarrage** —
+un `/reload` ne le rejoue pas. Un écouteur déclare `execute(ctx, ...args)` : le
+contexte vient en premier, les arguments d'un événement Discord étant
+variadiques. Un composant déclare `execute(interaction, ctx, args)`, comme une
+commande, et son identifiant persistant vient d'`encodeCustomId()`.
+
+Il peut poser à côté un `manifest.js` facultatif, qui déclare `schema` — le
+fragment de `config.yml` qui lui appartient, validé au même titre que le noyau —
+et `intents`. Il est lu avant la configuration : il déclare, il ne fait rien
+d'autre.
 
 ## Spécifications
 

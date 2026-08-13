@@ -33,6 +33,14 @@ templates:
     title_key: "commands.unavailable.title"
     description_key: "commands.unavailable.description"
 
+  # Bouton, menu ou modale dont l'identifiant ne route plus : message publié
+  # avant un déploiement qui a retiré le composant. Sans réponse, le membre
+  # verrait « L'application ne répond pas » et croirait le bot cassé.
+  component_expired:
+    color: "error"
+    title_key: "components.expired.title"
+    description_key: "components.expired.description"
+
   config_reloaded:
     color: "success"
     title_key: "config.reloaded.title"

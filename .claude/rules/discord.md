@@ -10,9 +10,37 @@ paths:
 
 ## Forme d'un module
 
-Chaque dossier de `src/modules/` exporte : `name`, `commands`, `events`,
-`migrations`, `retention`, `init(ctx)`. Le noyau découvre les modules
-automatiquement — ne jamais ajouter de liste de modules à maintenir à la main.
+Chaque dossier de `src/modules/` exporte : `name`, `commands`, `components`,
+`events`, `migrations`, `retention`, `erasure`, `capabilities`, `init(ctx)`,
+`ready(ctx)`. Le noyau découvre les modules automatiquement — ne jamais ajouter
+de liste de modules à maintenir à la main.
+
+Il peut poser à côté un `manifest.js` facultatif : `schema`, le fragment de
+`config.yml` qui lui appartient, et `intents`. Lu avant la configuration, il ne
+fait rien d'autre que déclarer.
+
+### Écouteurs et cycle de vie
+
+```js
+export const events = [
+  { name: 'messageDelete', execute: async (ctx, message) => { ... } },
+];
+```
+
+`name` est la valeur camelCase de `Events`, jamais la clé PascalCase :
+`MessageDelete` poserait un écouteur que Discord n'appelle jamais. Le contexte
+vient **en premier**, à l'inverse des commandes — les arguments d'un événement
+sont variadiques, aucun paramètre fixe ne peut suivre un rest.
+
+Ne jamais déclarer `clientReady` : il est réservé au noyau, dont la séquence
+enchaîne l'enregistrement des commandes puis la vérification des références. Ce
+qui doit tourner au démarrage une fois l'API disponible va dans `ready(ctx)`,
+appelé après cette vérification — donc quand le module sait si sa capacité est
+active. `ready` ne s'exécute **qu'au démarrage** : pour réagir à un
+rechargement, s'abonner à `config.on('reload')`.
+
+Un écouteur ne relance jamais : le noyau l'enveloppe, journalise et poursuit.
+Un module désactivé (§5.5 du socle) ne reçoit ni événement ni `ready`.
 
 ## Persistance des composants
 
@@ -26,6 +54,75 @@ sans erreur visible.
 
 Concerne : le bouton de vérification, le menu de tickets, la pagination du casier,
 les boutons de prévisualisation d'embed.
+
+### Format de l'identifiant
+
+```
+module:action:arg1:arg2
+```
+
+Construit par `encodeCustomId()` de `src/core/components/index.js`, **jamais à la
+main**. Le nom du module en tête est l'espace de nommage : deux modules déclarent
+`confirm` sans se marcher dessus. Les arguments décodés arrivent en dernier
+paramètre d'`execute`.
+
+Les arguments sont des **chaînes**, sans conversion implicite : accepter un
+nombre reviendrait à accepter qu'un identifiant Discord arrive déjà tronqué.
+Écrire `String(page)` et assumer la conversion.
+
+Discord plafonne l'identifiant à **100 caractères**. Dépassement et séparateur
+dans un segment sont **refusés à la construction, jamais tronqués** : un
+identifiant coupé ne route nulle part, ou pire, route vers autre chose.
+
+**L'identifiant transporte une clé, jamais un contenu.** Deux conséquences qu'on
+découvre autrement en pleine phase 5 :
+
+- **Le plafond se consomme vite.** Un identifiant Discord fait 19 chiffres.
+  `verification:code:` suivi de deux identifiants, et il ne reste presque rien.
+  La contrainte ne concerne pas que les gros contenus.
+- **Ce qui va en mémoire ne survit pas à un redémarrage.** Acceptable pour une
+  prévisualisation d'embed en cours de composition, inacceptable pour un message
+  permanent, dont l'état va en base. Le critère est la **durée de vie attendue du
+  composant**, pas la taille du contenu.
+
+### Permission d'un composant
+
+Une déclaration porte **soit** `permission: 'public'`, **soit**
+`permission_key: 'commands.embed.allowed_roles'`, un chemin vers `config.yml` —
+jamais une liste de rôles écrite dans le code. Ni l'un ni l'autre, ou les deux :
+refus bloquant au démarrage.
+
+Aucun défaut, dans un sens comme dans l'autre. Ouvrir par défaut reproduirait la
+liste vide qui ouvrirait `/ban` à tous ; fermer par défaut rendrait muet le
+bouton de vérification, destiné à des membres qui n'ont aucun rôle.
+
+Une clé qui ne résout pas refuse à tous, et le démarrage la signale — même
+contrôle que pour une commande sans entrée dans `config.yml`.
+
+### Accusé de réception : deux contraintes opposées
+
+Elles décident de la forme du code et se découvrent douloureusement.
+
+| Situation | Règle |
+|-----------|-------|
+| Ouvrir une modale | `showModal()` **doit être la première réponse** à l'interaction — impossible d'accuser réception puis d'ouvrir |
+| Traitement de plus de 3 secondes | accusé préalable obligatoire (`deferReply` ou `deferUpdate`), qui porte la fenêtre à 15 minutes |
+
+Les deux boutons de la phase 1 tombent chacun d'un côté : « Entrer le code »
+ouvre directement une modale, « Se vérifier » rend une image de façon synchrone
+donc défère puis édite.
+
+**Le routeur du noyau n'accuse jamais réception à la place du module** : un
+`deferReply()` posé là rendrait `showModal()` impossible partout. C'est au module
+de savoir lequel des deux cas s'applique.
+
+### Ce que le routeur ne fait pas
+
+Aucun contrôle de propriété du message. Discord garantit déjà qu'un composant
+porté par un message **éphémère** n'est cliquable que par son destinataire. Un
+composant public qui doit se restreindre inscrit l'identifiant du membre dans son
+identifiant de composant — non falsifiable, puisqu'il provient d'un message que le
+bot a lui-même posté. Ne pas ajouter cette couche.
 
 ## Messages permanents
 

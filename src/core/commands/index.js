@@ -1,3 +1,4 @@
+import { EPHEMERAL } from '../discord/flags.js';
 import { AppError, isExpected, PermissionDeniedError } from '../errors/app-error.js';
 
 import { isAllowed, roleIdsOf } from './permissions.js';
@@ -11,9 +12,6 @@ import { isAllowed, roleIdsOf } from './permissions.js';
 
 /** Contrainte Discord sur le nom d'une commande. */
 const COMMAND_NAME = /^[a-z0-9_-]{1,32}$/;
-
-/** Répondre au seul demandeur. Valeur de `MessageFlags.Ephemeral`. */
-const EPHEMERAL = 64;
 
 export function createCommandRegistry({ config, logger, embeds }) {
   /** @type {Map<string, object>} */

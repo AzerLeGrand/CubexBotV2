@@ -6,6 +6,19 @@ Spécification du noyau du bot Discord Cubex. Aucun module fonctionnel ne peut �
 **Statut :** figé le 11 août 2026, révisé le 12 août 2026 (voir §15, points fermés).
 **Remplace :** `CubexBOT.md` (périmé — décrivait une architecture avec panel Express).
 
+## Amendements postérieurs au gel
+
+La date de gel est conservée : savoir ce qui a bougé depuis vaut mieux qu'une
+date neuve qui effacerait l'historique. Le socle 0.2 ajoute au noyau ce que la
+phase 1 réclame et que la phase 0 n'avait aucune raison d'écrire.
+
+| Date | Lot | Section | Modification |
+|------|-----|---------|--------------|
+| 13 août 2026 | 0.2 — lot 1 | §4 | `manifest.js` : fragment de `config.yml` et intents déclarés par module, lus avant la configuration |
+| 13 août 2026 | 0.2 — lot 1 | §12 | intents déclarés par manifeste, union dédupliquée avec le `Guilds` du noyau, nom inconnu refusé |
+| 14 août 2026 | 0.2 — lot 2 | §4 | `events` câblés par le noyau sous enveloppe, `clientReady` réservé, nouvel export `ready(ctx)` |
+| 14 août 2026 | 0.2 — lot 3 | §4 | `components` : boutons, menus et modales routés par identifiant persistant, permission déclarée explicitement |
+
 ---
 
 ## 1. Portée
@@ -211,15 +224,132 @@ Chaque dossier sous `src/modules/` expose la même interface :
 |--------|-------------|------|
 | `name` | oui | identifiant du module, **égal au nom du dossier** |
 | `commands` | non | commandes slash fournies |
+| `components` | non | boutons, menus et modales, routés par identifiant persistant |
 | `events` | non | écouteurs d'événements Discord |
 | `migrations` | non | fichiers SQL du module |
 | `retention` | non | déclarations pour le registre de purge |
 | `erasure` | non | déclarations pour le registre d'effacement |
-| `init(ctx)` | non | initialisation, reçoit le contexte du noyau |
+| `capabilities` | non | capacités et références Discord dont elles dépendent |
+| `init(ctx)` | non | initialisation, avant la connexion |
+| `ready(ctx)` | non | initialisation exigeant l'API, après la connexion |
 
-`init` est facultative : un module purement déclaratif — des migrations et des
-déclarations de rétention, sans état à monter — n'a pas à écrire une fonction
-vide pour la forme.
+`init` et `ready` sont facultatives : un module purement déclaratif — des
+migrations et des déclarations de rétention, sans état à monter — n'a pas à
+écrire une fonction vide pour la forme.
+
+### Écouteurs d'événements
+
+```js
+export const events = [
+  { name: 'messageDelete', once: false, execute: async (ctx, message) => { ... } },
+];
+```
+
+`name` est la **valeur** camelCase de l'énumération `Events` de discord.js,
+jamais sa clé PascalCase : `MessageDelete` poserait un écouteur que Discord
+n'appelle jamais, sans erreur ni symptôme. Un nom inconnu est refusé au
+démarrage.
+
+Le contexte est le **premier** argument, à l'inverse des commandes où
+`execute(interaction, context)` le met en second. Les arguments d'un événement
+Discord sont variadiques et de nombre variable : aucun paramètre fixe ne peut
+suivre un rest, et le contexte est le seul dont la position soit connue
+d'avance.
+
+Le noyau enveloppe chaque écouteur : une erreur est journalisée avec le module
+et l'événement, jamais relancée. Un `client.on` asynchrone qui rejette
+produirait un `unhandledRejection`, traité en défaillance fatale — un message
+supprimé dans un salon inattendu arrêterait le bot. C'est la raison pour
+laquelle ce câblage appartient au noyau.
+
+Un module désactivé (§5.5) ne reçoit aucun événement. L'état est relu à chaque
+passage : un rechargement à chaud qui réactive le module le remet à l'écoute
+sans réattachement.
+
+### Composants persistants
+
+```js
+export const components = [
+  { action: 'confirm', permission: 'public', execute: async (interaction, ctx, args) => { ... } },
+];
+```
+
+Boutons, menus déroulants et soumissions de modale portent tous un `customId` :
+même décodage, même registre, même routage. L'identifiant a la forme
+`module:action:arg1:arg2`, construit par `encodeCustomId()` et jamais à la main.
+Le nom du module en tête est l'espace de nommage : deux modules déclarent
+`confirm` sans se marcher dessus.
+
+Le plafond de 100 caractères imposé par Discord est **refusé à la construction,
+jamais tronqué** — un identifiant coupé ne route nulle part, ou route vers autre
+chose. L'identifiant transporte une clé, jamais un contenu.
+
+Une déclaration porte **soit** `permission: 'public'`, **soit** un
+`permission_key` pointant vers `config.yml`. Ni l'un ni l'autre, ou les deux :
+refus au démarrage. Il n'y a pas de défaut — ouvrir par défaut reproduirait la
+liste vide qui ouvrirait `/ban` à tous, fermer par défaut rendrait muet un bouton
+destiné à des membres qui n'ont aucun rôle.
+
+`execute` reçoit l'interaction **en premier**, comme une commande : un composant
+a une arité fixe, et rien ne justifierait une troisième convention. Le routeur
+n'accuse jamais réception à la place du module — `showModal()` doit être la
+première réponse à une interaction, et un accusé posé par le noyau la rendrait
+impossible partout.
+
+Un composant répond toujours, en éphémère : préfixe inconnu, module désactivé,
+refus de permission ou erreur d'exécution ont chacun leur gabarit. Un bouton
+resté muet après un déploiement est le défaut le plus courant de ce genre de bot,
+et sans réponse le membre croit le bot cassé.
+
+### `ready(ctx)`, et pourquoi `clientReady` est réservé
+
+`init` s'exécute avant `client.login()` : ni serveur, ni salons, ni rôles. Un
+module qui doit lire l'API au démarrage — vérifier qu'un message permanent est
+toujours là, le republier sinon — n'a nulle part où le faire.
+
+Un `clientReady` déclaré par un module ne convient pas : le noyau en a déjà un,
+asynchrone, qui enchaîne `guilds.fetch`, l'enregistrement des commandes et
+`verifyDiscordRefs()`. Les deux partiraient en parallèle, et le module
+publierait avant de savoir si sa capacité est active — un salon supprimé, et il
+publie dans le vide. **`clientReady` est donc refusé au démarrage** dans les
+`events` d'un module ; les autres événements du noyau ne sont pas restreints.
+
+`ready(ctx)` est appelé à la fin de la séquence, **après `verifyDiscordRefs()`**.
+Chaque module dans une enveloppe séparée : un `ready` en échec est journalisé et
+n'empêche ni les suivants ni le démarrage de la purge. Un module désactivé n'est
+pas appelé — le saut porte sur le module entier, jamais sur une capacité isolée :
+une capacité non critique tombée laisse le `ready` s'exécuter, seule cette
+capacité se tait.
+
+**`ready` ne s'exécute qu'au démarrage.** Un `/reload` revérifie les références
+et peut réactiver une capacité, mais ne rejoue pas `ready`. Un module qui veut
+réagir à un rechargement s'abonne à `config.on('reload')`.
+
+### Manifeste d'un module
+
+Un module peut poser à côté de son `index.js` un `manifest.js` **facultatif**,
+dont les deux exports le sont aussi, indépendamment l'un de l'autre :
+
+| Export | Rôle |
+|--------|------|
+| `schema` | fragment de `config.yml` appartenant au module |
+| `intents` | intents Discord dont le module a besoin, par leur nom |
+
+La section validée par `schema` porte le **nom du dossier** : aucun nom à
+déclarer, aucune collision possible entre deux modules. Un fragment dont le nom
+heurte une section du noyau est refusé au démarrage, et un module présent impose
+sa section — un dossier `verification/` sans `verification:` dans `config.yml`
+arrête le démarrage avec la liste des clés manquantes.
+
+Le manifeste est lu **avant les secrets et avant la configuration**, donc avant
+le logger et la base. Il ne fait rien d'autre que déclarer : aucun effet de
+bord, aucun import du noyau, aucune lecture de fichier, aucun appel réseau.
+C'est ce qui justifie le fichier séparé — `index.js` importe librement le noyau,
+et l'importer si tôt créerait un ordre de dépendance intenable.
+
+Un manifeste présent mais non importable arrête le démarrage, pour la même
+raison qu'un `index.js` non importable : l'ignorer retirerait sa section de la
+validation, en silence.
 
 `name` doit égaler le nom du dossier. Il porte l'identité des migrations et des
 commandes ; un écart les ferait diverger en silence.
@@ -673,7 +803,10 @@ Les intents privilégiés s'activent dans le portail développeur. Depuis le
 applications accessibles à moins de 10 000 utilisateurs ne sont pas soumises à
 procédure de revue. Cubex est très en dessous.
 
-Seuls les intents réellement utilisés par les phases livrées sont déclarés.
+Seuls les intents réellement utilisés par les phases livrées sont déclarés. Le
+noyau garde `Guilds` en propre ; chaque module réclame les siens par leur nom
+dans son manifeste, et l'union dédupliquée est journalisée au démarrage. Un nom
+inconnu de `GatewayIntentBits` est refusé en nommant le module et la valeur.
 
 ---
 

@@ -4,3 +4,7 @@ logs/
 .env
 .env.local
 coverage/
+# Modules jetables des tests. Sous la racine, et non dans le dossier temporaire
+# du système, pour que le spécifieur nu `zod` s'y résolve par remontée vers
+# node_modules/ — voir tests/core/loader/manifests.test.js.
+tests/.tmp/

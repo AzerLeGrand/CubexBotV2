@@ -82,8 +82,18 @@ export function migrationSources(modules) {
     .map((module) => ({ owner: module.name, directory: module.migrations }));
 }
 
-/** Dossiers de `src/modules/`, triés par comparaison binaire. */
-function listModuleNames(directory) {
+/**
+ * Dossiers de `src/modules/`, triés par comparaison binaire.
+ *
+ * Partagée avec le balayage des manifestes (`manifests.js`), qui s'exécute bien
+ * plus tôt : les deux passages doivent voir exactement la même liste et opposer
+ * les mêmes refus. Deux découvertes divergentes laisseraient valider la section
+ * d'un module non chargé, ou charger un module dont la section ne l'est pas.
+ *
+ * @param {string} directory dossier des modules
+ * @returns {string[]}
+ */
+export function listModuleNames(directory) {
   let entries;
 
   try {
@@ -124,9 +134,9 @@ function listModuleNames(directory) {
 /**
  * Valide la forme d'un module et complète ce qui est facultatif.
  *
- * `init` est optionnelle : un module purement déclaratif — des migrations et
- * des déclarations de rétention, sans état à monter — n'a pas à écrire une
- * fonction vide pour la forme.
+ * `init` et `ready` sont optionnelles : un module purement déclaratif — des
+ * migrations et des déclarations de rétention, sans état à monter — n'a pas à
+ * écrire une fonction vide pour la forme.
  */
 function normalize(loaded, name, moduleDir) {
   const fault = (message) => {
@@ -139,18 +149,24 @@ function normalize(loaded, name, moduleDir) {
     fault(`son export « name » vaut ${JSON.stringify(loaded.name)}, attendu ${JSON.stringify(name)}`);
   }
 
-  for (const field of ['commands', 'events', 'retention', 'erasure', 'capabilities']) {
+  for (const field of ['commands', 'components', 'events', 'retention', 'erasure', 'capabilities']) {
     if (loaded[field] !== undefined && !Array.isArray(loaded[field])) fault(`« ${field} » doit être un tableau`);
   }
 
-  if (loaded.init !== undefined && typeof loaded.init !== 'function') {
-    fault('« init » doit être une fonction');
+  // `init` monte le module avant la connexion ; `ready` fait ce qui exige
+  // l'API, après la vérification des références. Voir core/events/index.js.
+  for (const hook of ['init', 'ready']) {
+    if (loaded[hook] !== undefined && typeof loaded[hook] !== 'function') {
+      fault(`« ${hook} » doit être une fonction`);
+    }
   }
 
   return {
     name,
     directory: moduleDir,
     commands: loaded.commands ?? [],
+    /** Boutons, menus et modales, routés par identifiant persistant. */
+    components: loaded.components ?? [],
     events: loaded.events ?? [],
     retention: loaded.retention ?? [],
     /** Déclarations pour le registre d'effacement (socle §10). */
@@ -159,6 +175,8 @@ function normalize(loaded, name, moduleDir) {
     capabilities: loaded.capabilities ?? [],
     migrations: resolveMigrations(loaded.migrations, moduleDir, fault),
     init: loaded.init ?? null,
+    /** Appelé après la connexion et la vérification des références, au seul démarrage. */
+    ready: loaded.ready ?? null,
   };
 }
 

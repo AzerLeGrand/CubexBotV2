@@ -24,6 +24,16 @@ commands:
       Cette commande dépend d'un salon ou d'un rôle que le bot n'a pas trouvé au
       démarrage. Un membre de l'équipe technique a été prévenu.
 
+components:
+  expired:
+    title: "Action expirée"
+    # Ne promet rien que le bot puisse démentir : il ne sait pas si un message
+    # plus récent existe, seulement que celui-ci ne route plus.
+    description: >-
+      Ce bouton provient d'un message publié avant une mise à jour du bot et ne
+      répond plus. Utilisez le message le plus récent du salon, ou prévenez
+      l'équipe s'il n'y en a pas.
+
 config:
   reloaded:
     title: "Configuration rechargée"

@@ -1,20 +1,25 @@
 import { fileURLToPath } from 'node:url';
 
-import { Client, GatewayIntentBits } from 'discord.js';
+import { Client } from 'discord.js';
 
 import { createCommandRegistry } from './core/commands/index.js';
 import { createReloadCommand } from './core/commands/reload.js';
+import { createComponentRegistry, routeInteraction } from './core/components/index.js';
 import { CapabilityRegistry } from './core/config/capabilities.js';
 import { verifyDiscordRefs } from './core/config/discord-refs.js';
 import { ConfigValidationError, formatErrors } from './core/config/errors.js';
 import { loadEnv } from './core/config/env.js';
 import { Configuration } from './core/config/index.js';
+import { buildConfigSchema, CORE_SECTION_NAMES } from './core/config/schema/core.schema.js';
 import { createDatabase } from './core/database/index.js';
 import { CORE_OWNER } from './core/database/migrations.js';
 import { createEmbedEngine } from './core/embeds/index.js';
 import { createErasureRegistry } from './core/erasure/index.js';
+import { AppError } from './core/errors/app-error.js';
 import { createShutdown } from './core/errors/handler.js';
+import { createEventRegistry, runReady } from './core/events/index.js';
 import { loadModules, migrationSources } from './core/loader/index.js';
+import { loadManifests, resolveIntents } from './core/loader/manifests.js';
 import { createLogger } from './core/logging/index.js';
 import { createPurgeRegistry } from './core/purge/index.js';
 import { createMinecraftBridge } from './minecraft/index.js';
@@ -23,26 +28,51 @@ import { fromRoot } from './utils/paths.js';
 /**
  * Assemblage du bot.
  *
- * L'ordre est contraint de bout en bout : la configuration précède le logger,
- * dont le niveau vient d'elle ; la base précède les modules, dont les migrations
- * s'appliquent dessus ; la connexion précède la vérification des références, que
- * seule l'API peut trancher.
+ * L'ordre est contraint de bout en bout : les manifestes précèdent la
+ * configuration, dont ils complètent le schéma ; la configuration précède le
+ * logger, dont le niveau vient d'elle ; la base précède les modules, dont les
+ * migrations s'appliquent dessus ; la connexion précède la vérification des
+ * références, que seule l'API peut trancher.
  *
  * Les fermetures s'inscrivent dans l'ordre d'ouverture et se déroulent à
  * l'envers : les journaux, inscrits d'office en premier, partent en dernier et
  * peuvent relater les fermetures précédentes.
  */
 
-/** Phase 0 : le fonctionnement de base ne demande rien d'autre (socle §12). */
-const INTENTS = [GatewayIntentBits.Guilds];
+/**
+ * Intents du noyau : le fonctionnement de base ne demande rien d'autre
+ * (socle §12). Les modules déclarent les leurs dans leur manifeste, et l'union
+ * se fait à l'étape 0.
+ */
+const CORE_INTENTS = ['Guilds'];
 
 /** Migrations du noyau, propriétaire `core`. */
 const CORE_MIGRATIONS = { owner: CORE_OWNER, directory: fromRoot('migrations') };
 
 export async function bootstrap() {
   // ---------------------------------------------------------------------
-  // 1. Secrets et configuration — avant tout, et sans journalisation
-  //    possible : le logger se règle depuis ce qui est lu ici.
+  // 0. Manifestes des modules — avant les secrets, donc avant tout.
+  //    Ce que les modules déclarent ici décide de ce que la configuration
+  //    doit valider et des intents avec lesquels le client se construit :
+  //    deux choses nécessaires avant que le reste ne puisse exister.
+  // ---------------------------------------------------------------------
+  let manifests;
+  let intents;
+
+  try {
+    manifests = await loadManifests();
+    intents = resolveIntents([...CORE_INTENTS, ...manifests.intents]);
+  } catch (cause) {
+    if (!(cause instanceof AppError)) throw cause;
+
+    // Aucun logger à ce stade, comme pour les secrets : stderr puis sortie.
+    process.stderr.write(`${cause.message}\n`);
+    return process.exit(1);
+  }
+
+  // ---------------------------------------------------------------------
+  // 1. Secrets et configuration — sans journalisation possible : le logger
+  //    se règle depuis ce qui est lu ici.
   // ---------------------------------------------------------------------
   const { env, errors: envErrors } = loadEnv();
 
@@ -51,7 +81,13 @@ export async function bootstrap() {
     return process.exit(1);
   }
 
-  const config = new Configuration();
+  // La validation porte sur l'intégralité du fichier, sections de modules
+  // comprises : une section qu'aucun schéma ne couvre laisserait passer une
+  // faute de frappe ou un identifiant sans guillemets.
+  const config = new Configuration({
+    configSchema: buildConfigSchema(manifests.fragments),
+    knownSections: [...CORE_SECTION_NAMES, ...Object.keys(manifests.fragments)],
+  });
 
   try {
     config.load();
@@ -117,8 +153,19 @@ export async function bootstrap() {
 
   const erasure = createErasureRegistry({ database, logger: logger.forModule('erasure') });
   const commands = createCommandRegistry({ config, logger: logger.forModule('commands'), embeds });
+  const events = createEventRegistry({ logger: logger.forModule('events'), capabilities });
+  const components = createComponentRegistry({
+    config,
+    logger: logger.forModule('components'),
+    embeds,
+    capabilities,
+  });
 
-  const client = new Client({ intents: INTENTS });
+  // Les intents sont lus une seule fois, ici : ajouter un module qui en réclame
+  // un nouveau reste un redémarrage, /reload n'y peut rien.
+  logger.info('intents Discord', { intents: intents.names, privileged: intents.privileged });
+
+  const client = new Client({ intents: intents.bits });
 
   shutdown.register('discord', () => client.destroy());
 
@@ -171,11 +218,18 @@ export async function bootstrap() {
     purge.register(module.name, module.retention);
     erasure.register(module.name, module.erasure);
     commands.register(module.name, module.commands);
+    components.register(module.name, module.components);
+    events.register(module.name, module.events);
   }
 
   for (const module of modules) {
     if (module.init !== null) await module.init({ ...context, module: module.name });
   }
+
+  // Après les init — un écouteur peut dépendre de ce qu'elles montent — mais
+  // avant la connexion : posés depuis clientReady, les écouteurs manqueraient
+  // tout ce qui arrive entre la connexion et l'exécution de la séquence.
+  events.attach(client, context);
 
   // Rapport au démarrage, jamais à la première utilisation : une commande sans
   // configuration est refusée à tous, et le découvrir en production est
@@ -185,6 +239,17 @@ export async function bootstrap() {
   if (unconfigured.length > 0) {
     logger.error('commandes sans entrée dans config.yml, elles seront refusées', {
       commands: unconfigured,
+    });
+  }
+
+  // Même contrôle pour les composants : une clé de permission qui ne résout pas
+  // rend le bouton muet pour tous, et on le découvrirait quand un membre clique
+  // sur « Se vérifier » sans jamais entrer sur le serveur.
+  const unroutable = components.unconfigured();
+
+  if (unroutable.length > 0) {
+    logger.error('composants dont la clé de permission ne résout pas, ils seront refusés', {
+      components: unroutable,
     });
   }
 
@@ -205,9 +270,16 @@ export async function bootstrap() {
         guild: guild.name,
         commands: commands.size,
         modules: modules.map((module) => module.name),
+        listeners: events.size,
         capabilities_disabled: refs.disabled,
         modules_disabled: refs.disabledModules,
       });
+
+      // Après verifyDiscordRefs(), jamais avant : un module dont la référence
+      // critique manque vient d'être désactivé, et publierait sinon dans un
+      // salon qui n'existe plus. Chaque ready est enveloppé, aucun n'empêche la
+      // purge de démarrer.
+      await runReady({ modules, context, capabilities, logger: logger.forModule('events') });
 
       purge.start();
     } catch (cause) {
@@ -216,18 +288,53 @@ export async function bootstrap() {
   });
 
   client.on('interactionCreate', (interaction) => {
-    if (!interaction.isChatInputCommand()) return;
-
-    // handle() ne lève jamais : une interaction sans réponse laisse
+    // Ni handle() ne lève jamais : une interaction sans réponse laisse
     // « L'application ne répond pas » à l'écran.
-    void commands.handle(interaction, context);
+    void routeInteraction(interaction, { commands, components, context });
   });
 
   client.on('error', (error) => logger.error('erreur du client Discord', { error }));
 
-  await client.login(env.DISCORD_TOKEN);
+  await login(client, env.DISCORD_TOKEN, intents.privileged);
 
   return { config, logger, database, client, shutdown, uninstall, context };
+}
+
+/**
+ * Connexion, et diagnostic de ce que Discord ne dit pas.
+ *
+ * Discord ferme la passerelle sans nommer l'intent fautif quand un intent
+ * privilégié n'est pas coché dans le portail développeur. discord.js relaie une
+ * Error nue, sans code ni classe propre — s'appuyer sur sa forme se casserait à
+ * la première montée de version. On n'y touche donc pas : l'erreur d'origine
+ * part en `cause`, et le message porte la liste des intents privilégiés
+ * demandés, seule chose que le bot sache et que l'opérateur ait besoin de lire.
+ *
+ * Écrit aussi sur stderr : c'est le troisième blocage de démarrage de la même
+ * famille, après les secrets manquants et la configuration invalide, et les
+ * deux autres y passent déjà. En production le journal n'écrit qu'en fichier
+ * JSON — l'opérateur qui vient de cocher un intent regarde `pm2 logs`, pas
+ * `logs/cubex-AAAA-MM-JJ.log`.
+ */
+async function login(client, token, privileged) {
+  try {
+    await client.login(token);
+  } catch (cause) {
+    const message =
+      privileged.length > 0
+        ? `connexion à Discord refusée (${cause.message}) — intents privilégiés demandés : ` +
+          `${privileged.join(', ')} ; vérifier qu'ils sont activés dans le portail développeur`
+        : `connexion à Discord refusée (${cause.message})`;
+
+    process.stderr.write(`${message}\n`);
+
+    throw new AppError(message, {
+      code: 'discord_login_failed',
+      context: { privileged },
+      cause,
+      expected: false,
+    });
+  }
 }
 
 // Démarre uniquement quand ce fichier est le point d'entrée : un import depuis

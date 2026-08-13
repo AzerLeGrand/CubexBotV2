@@ -112,7 +112,7 @@ function fromZodIssue(issue, file) {
         keys.length > 1
           ? `clés inconnues dans cette section : ${keys.join(', ')}`
           : 'clé inconnue dans cette section',
-      hint: 'une section du noyau n\'accepte que les clés qu\'elle déclare',
+      hint: 'une section n\'accepte que les clés qu\'elle déclare',
     });
   }
 

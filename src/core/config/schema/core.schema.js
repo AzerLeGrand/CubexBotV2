@@ -120,7 +120,35 @@ const CORE_SECTIONS = {
 export const CORE_SECTION_NAMES = Object.freeze(Object.keys(CORE_SECTIONS));
 
 /**
- * Racine de `config.yml`.
+ * Monte le fragment d'un module en section obligatoire de `config.yml`.
+ *
+ * `.prefault({})` et non `.default({})` : le second court-circuite le parsing
+ * et accepterait une section absente sans rien vérifier, quand le premier
+ * substitue **puis** parse. Une section manquante produit ainsi la liste de SES
+ * clés manquantes, chacune avec son chemin complet et son message, au lieu d'un
+ * unique « expected object » posé sur la section entière.
+ *
+ * `null` est normalisé en amont parce que js-yaml rend `null`, et non
+ * `undefined`, pour une section dont l'en-tête est écrit et le corps vide :
+ *
+ *     verification:
+ *
+ * C'est la même erreur d'édition que la section absente — probablement la plus
+ * fréquente des deux, on écrit l'en-tête puis on est interrompu — et elle doit
+ * produire le même diagnostic. Rien d'autre n'est normalisé : une section
+ * renseignée avec un scalaire ou une liste reste une erreur de type.
+ *
+ * Conséquence assumée : un fragment dont toutes les clés porteraient un défaut
+ * rendrait sa section facultative de fait. Sans danger — `.default()` est
+ * réservé aux réglages purement techniques et interdit sur tout identifiant
+ * Discord, toute liste `allowed_roles` et toute durée de rétention. Aucun
+ * fragment ne peut être entièrement défaultable.
+ */
+const requiredSection = (schema) =>
+  z.preprocess((value) => (value === null ? undefined : value), schema.prefault({}));
+
+/**
+ * Racine de `config.yml`, sections du noyau et fragments des modules réunis.
  *
  * Souple à la racine, stricte à l'intérieur de chaque section. Une section sans
  * fragment déclaré — `tickets:` renseignée avant que le module ne soit écrit —
@@ -128,11 +156,28 @@ export const CORE_SECTION_NAMES = Object.freeze(Object.keys(CORE_SECTIONS));
  * être préparée qu'au rythme du développement.
  *
  * Le filet contre la faute de frappe reste tendu par ailleurs : toutes les
- * sections ci-dessus étant obligatoires, `purg:` au lieu de `purge:` produit
- * une erreur bloquante de section manquante. `unknownSections()` complète en
+ * sections du noyau étant obligatoires, `purg:` au lieu de `purge:` produit une
+ * erreur bloquante de section manquante. `unknownSections()` complète en
  * signalant la clé orpheline.
+ *
+ * Les fragments arrivent déjà passés au crible par `loadManifests()` : c'est là
+ * qu'un nom heurtant une section du noyau est refusé, avec le module fautif
+ * sous la main. Ici, ils ne seraient qu'un écrasement silencieux.
+ *
+ * @param {Record<string, object>} [fragments] section → schéma, par module
  */
-export const CoreConfigSchema = z.looseObject(CORE_SECTIONS);
+export function buildConfigSchema(fragments = {}) {
+  const sections = { ...CORE_SECTIONS };
+
+  for (const [name, schema] of Object.entries(fragments)) {
+    sections[name] = requiredSection(schema);
+  }
+
+  return z.looseObject(sections);
+}
+
+/** Racine du seul noyau, quand aucun module n'est en jeu. */
+export const CoreConfigSchema = buildConfigSchema();
 
 /**
  * Sections racine qu'aucun schéma ne couvre. Retournées à l'appelant plutôt
