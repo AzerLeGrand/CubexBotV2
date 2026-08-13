@@ -274,6 +274,8 @@ describe('migrations — échecs', () => {
 });
 
 describe('migrations — intégrité', () => {
+  const CORE = ['core'];
+
   const applied = (over = {}) => [
     { owner: 'core', number: 1, name: 'alpha', checksum: 'aaa', applied_at: 'x', ...over },
   ];
@@ -283,25 +285,25 @@ describe('migrations — intégrité', () => {
   ];
 
   test('ne signale rien quand tout concorde', () => {
-    assert.deepEqual(verify(applied(), onDisk()), []);
+    assert.deepEqual(verify(applied(), onDisk(), CORE), { problems: [], retired: [] });
   });
 
   test('détecte une migration modifiée après application', () => {
-    const [problem] = verify(applied(), onDisk({ checksum: 'bbb' }));
+    const [problem] = verify(applied(), onDisk({ checksum: 'bbb' }), CORE).problems;
 
     assert.match(problem, /modifiée après application/);
     assert.match(problem, /en ajouter une nouvelle/);
   });
 
   test('détecte une migration disparue du disque', () => {
-    const [problem] = verify(applied(), []);
+    const [problem] = verify(applied(), [], CORE).problems;
 
     assert.match(problem, /introuvable sur le disque/);
     assert.match(problem, /supprimé ou renuméroté/);
   });
 
   test('détecte une migration renommée', () => {
-    const [problem] = verify(applied(), onDisk({ name: 'autrement' }));
+    const [problem] = verify(applied(), onDisk({ name: 'autrement' }), CORE).problems;
 
     assert.match(problem, /renommée/);
   });
@@ -319,7 +321,7 @@ describe('migrations — intégrité', () => {
       { owner: 'core', number: 3, name: 'gamma', file: '003_gamma.sql', checksum: 'ccc' },
     ];
 
-    const [problem] = verify(rows, files);
+    const [problem] = verify(rows, files, CORE).problems;
 
     assert.match(problem, /core\/002/);
     assert.match(problem, /inséré après coup/);
@@ -331,7 +333,76 @@ describe('migrations — intégrité', () => {
       { owner: 'core', number: 2, name: 'beta', file: '002_beta.sql', checksum: 'bbb' },
     ];
 
-    assert.deepEqual(verify(applied(), files), []);
+    assert.deepEqual(verify(applied(), files, CORE).problems, []);
+  });
+
+  test('un propriétaire sans source est retiré, pas manquant', () => {
+    // tickets a été sorti du dépôt : ses migrations restent en base, mais
+    // aucune source n'est fournie pour lui.
+    const rows = [
+      ...applied(),
+      { owner: 'tickets', number: 1, name: 't', checksum: 'ttt', applied_at: 'x' },
+      { owner: 'tickets', number: 2, name: 'u', checksum: 'uuu', applied_at: 'x' },
+    ];
+
+    const { problems, retired } = verify(rows, onDisk(), CORE);
+
+    assert.deepEqual(problems, [], 'retirer un module ne doit pas bloquer le démarrage');
+    assert.deepEqual(retired, [{ owner: 'tickets', count: 2 }]);
+  });
+
+  test('un propriétaire présent dont le fichier manque reste bloquant', () => {
+    // La distinction porte sur le propriétaire, pas sur le fichier seul : ici
+    // tickets est bien là, c'est sa migration qui a disparu.
+    const rows = [{ owner: 'tickets', number: 1, name: 't', checksum: 'ttt', applied_at: 'x' }];
+
+    const { problems, retired } = verify(rows, [], ['core', 'tickets']);
+
+    assert.equal(problems.length, 1);
+    assert.match(problems[0], /introuvable sur le disque/);
+    assert.deepEqual(retired, []);
+  });
+
+  test('journalise le module retiré sans interrompre les autres migrations', (t) => {
+    const { open, root, logger } = sandbox(t);
+    const database = open();
+
+    const tickets = migrationsDir(root, 'tickets', { '001_t.sql': 'CREATE TABLE t (id INTEGER);' });
+    const core = migrationsDir(root, 'core', { '001_alpha.sql': TABLE_A });
+
+    database.migrate([core, tickets]);
+
+    // tickets disparaît du dépôt : seule la source du noyau est fournie.
+    const result = database.migrate([core]);
+
+    assert.deepEqual(result.retired, [{ owner: 'tickets', count: 1 }]);
+
+    const avertissement = logger.of('warn').at(-1);
+    assert.match(avertissement.message, /module absent/);
+    assert.equal(avertissement.context.owner, 'tickets');
+    assert.match(avertissement.context.hint, /décision manuelle/);
+
+    // La table du module retiré est toujours là.
+    const tables = database
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 't'")
+      .all();
+    assert.equal(tables.length, 1, 'les données d\'un module retiré ne disparaissent pas');
+  });
+
+  test('réapplique sans heurt quand le module revient', (t) => {
+    const { open, root } = sandbox(t);
+    const database = open();
+
+    const tickets = migrationsDir(root, 'tickets', { '001_t.sql': 'CREATE TABLE t (id INTEGER);' });
+    const core = migrationsDir(root, 'core', { '001_alpha.sql': TABLE_A });
+
+    database.migrate([core, tickets]);
+    database.migrate([core]);
+
+    const retour = database.migrate([core, tickets]);
+
+    assert.deepEqual(retour.applied, [], 'rien à réappliquer, les empreintes concordent');
+    assert.deepEqual(retour.retired, []);
   });
 
   test('refuse de démarrer sur une divergence, sans rien appliquer', (t) => {

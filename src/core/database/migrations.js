@@ -97,18 +97,37 @@ export function readApplied(db) {
 /**
  * Compare ce que la base dit avoir appliqué à ce qui se trouve sur le disque.
  *
- * Trois divergences possibles, toutes bloquantes : un fichier disparu, un
- * fichier modifié après coup, et une migration glissée sous un numéro déjà
- * dépassé — ce dernier cas survient quand deux branches créent le même numéro
- * chacune de leur côté.
+ * Trois divergences bloquantes : un fichier disparu, un fichier modifié après
+ * coup, et une migration glissée sous un numéro déjà dépassé — ce dernier cas
+ * survient quand deux branches créent le même numéro chacune de leur côté.
  *
- * @returns {string[]} anomalies, vide si tout concorde
+ * La distinction porte sur la présence du **propriétaire**, jamais sur celle du
+ * fichier seul. Un module retiré du dépôt ne fournit plus de source : ses
+ * migrations restent en base sans que ce soit une anomalie, sinon retirer un
+ * module rendrait le démarrage impossible.
+ *
+ * « Source fournie » dépend de la présence du module sur disque, jamais d'un
+ * état d'activation : un module dont une référence Discord est introuvable est
+ * désactivé au sens du §5.5 mais reste chargé, et ses migrations s'appliquent.
+ *
+ * @param {readonly string[]|Set<string>} owners propriétaires ayant fourni une source
+ * @returns {{ problems: string[], retired: { owner: string, count: number }[] }}
  */
-export function verify(applied, available) {
+export function verify(applied, available, owners) {
+  const present = new Set(owners);
   const problems = [];
+  const retired = new Map();
   const onDisk = new Map(available.map((migration) => [key(migration), migration]));
 
   for (const row of applied) {
+    // Aucune source pour ce propriétaire : le module a été retiré du dépôt.
+    // Ses tables et leurs données subsistent, le nettoyage reste une décision
+    // humaine.
+    if (!present.has(row.owner)) {
+      retired.set(row.owner, (retired.get(row.owner) ?? 0) + 1);
+      continue;
+    }
+
     const migration = onDisk.get(key(row));
 
     if (migration === undefined) {
@@ -133,6 +152,7 @@ export function verify(applied, available) {
 
   const highest = new Map();
   for (const row of applied) {
+    if (!present.has(row.owner)) continue;
     highest.set(row.owner, Math.max(highest.get(row.owner) ?? -1, row.number));
   }
 
@@ -149,7 +169,10 @@ export function verify(applied, available) {
     }
   }
 
-  return problems;
+  return {
+    problems,
+    retired: [...retired].map(([owner, count]) => ({ owner, count })),
+  };
 }
 
 /**
@@ -160,7 +183,7 @@ export function verify(applied, available) {
  * comme appliquée. La première défaillance arrête le démarrage — poursuivre
  * laisserait un schéma partiel.
  *
- * @returns {{ applied: string[], total: number }}
+ * @returns {{ applied: string[], total: number, retired: { owner: string, count: number }[] }}
  */
 export function runMigrations(db, sources, { logger }) {
   ensureTable(db);
@@ -168,12 +191,21 @@ export function runMigrations(db, sources, { logger }) {
   const available = readMigrations(sources);
   const applied = readApplied(db);
 
-  const problems = verify(applied, available);
+  const { problems, retired } = verify(applied, available, sources.map((source) => source.owner));
+
   if (problems.length > 0) {
     throw new MigrationError(
       `état des migrations incohérent :\n  - ${problems.join('\n  - ')}`,
       { problems },
     );
+  }
+
+  for (const { owner, count } of retired) {
+    logger.warn('migrations d\'un module absent conservées en base', {
+      owner,
+      count,
+      hint: 'les tables et leurs données subsistent ; les supprimer est une décision manuelle',
+    });
   }
 
   const done = new Set(applied.map(key));
@@ -212,7 +244,7 @@ export function runMigrations(db, sources, { logger }) {
     });
   }
 
-  return { applied: pending.map(key), total: available.length };
+  return { applied: pending.map(key), total: available.length, retired };
 }
 
 function ensureTable(db) {

@@ -17,14 +17,63 @@ possible plus tard.
 ## Migrations
 
 - Fichiers SQL numérotés dans `migrations/`, nommés `001_description.sql`.
-- Une table interne enregistre les migrations appliquées : numéro, nom,
-  horodatage.
+- La table de suivi porte une colonne `owner`, clé primaire `(owner, number)` :
+  chaque module a sa propre séquence.
 - Application automatique au démarrage, dans l'ordre, en transaction.
 - Une migration en échec arrête le démarrage.
 - **Ne jamais modifier une migration déjà appliquée.** En ajouter une nouvelle.
 
 Chaque module déclare ses propres fichiers de migration via son export
 `migrations`.
+
+### Ordre d'application
+
+`core` en premier par comparaison explicite, puis les autres propriétaires par
+ordre de nom, en **comparaison binaire**. Jamais `localeCompare` : son résultat
+dépend de l'ICU chargée, l'ordre pourrait différer entre un poste Windows et le
+VPS Debian.
+
+L'ordre ne dépend jamais de la découverte du système de fichiers.
+
+### Pas de clé étrangère entre modules
+
+**Une migration de module ne référence que ses propres tables ou celles du
+noyau.** Aucune table déclarée dans les specs des phases 1 à 6 n'y contrevient.
+
+Il n'existe volontairement aucune déclaration de dépendance entre modules : leur
+ordre d'application est déterministe mais arbitraire, et rien ne garantit qu'il
+corresponde à un ordre de dépendance. Si le besoin d'une table partagée
+apparaissait, cette table appartiendrait au noyau.
+
+### Propriétaire absent
+
+La distinction porte sur la présence du **propriétaire**, jamais sur celle du
+fichier seul.
+
+| Situation | Traitement |
+|-----------|------------|
+| Source fournie, fichier manquant | erreur bloquante : quelqu'un a supprimé ou renuméroté une migration d'un module actif |
+| Aucune source fournie pour ce propriétaire | avertissement journalisé, démarrage normal |
+
+**Les tables ne sont jamais supprimées.** Un module retiré peut l'être
+temporairement, et ses données — tickets archivés, transcriptions — n'ont pas à
+disparaître parce qu'on a commenté un dossier. Le nettoyage reste une décision
+humaine.
+
+« Source fournie » dépend de la **présence du module sur disque**, jamais d'un
+état d'activation. Un module dont une référence Discord est introuvable est
+désactivé au sens du socle §5.5 mais reste chargé : ses migrations continuent de
+s'appliquer.
+
+### Dépendance critique au chargeur de modules
+
+Cette règle transforme « pas de source » en « module absent ». Un module présent
+mais qui échoue à s'importer produirait la même absence, et ses migrations
+cesseraient de s'appliquer en silence.
+
+**Un module présent dans `src/modules/` qui échoue à s'importer doit arrêter le
+démarrage. Jamais être ignoré.** La sûreté du traitement ci-dessus en dépend
+entièrement.
 
 ## Registre de purge
 
@@ -36,28 +85,9 @@ retention: [
 ]
 ```
 
-Une tâche quotidienne à 4h00 (fuseau `bot.timezone`) parcourt le registre et
-supprime. Une erreur sur une table n'interrompt pas le traitement des autres. Le
-compte rendu indique le nombre de lignes supprimées par table.
-
-### Exception : les fichiers de journaux
-
-**Les journaux sur disque ne passent pas par le registre.** Ils sont supprimés
-par leur propre transport, dans `src/core/logging/`, au moment où le fichier du
-jour tourne.
-
-Le registre est typé pour du SQL — `table`, `date_column`, `retention_key`. Lui
-greffer une seconde nature pour un unique cas de fichiers le compliquerait plus
-qu'il ne le simplifierait, et la tâche de 4h00 devrait alors connaître deux
-mécanismes de suppression au lieu d'un.
-
-Ce qui ne change pas : **la durée vient de `config.yml`** comme tout le reste,
-par `logging.retention_days`. Rien n'est codé en dur, rien ne vit dans
-`/etc/logrotate.d/`. C'est aussi pourquoi `logrotate` a été écarté — il aurait
-sorti un réglage fonctionnel du dépôt et fait diverger le poste de
-développement de la production.
-
-Le socle §10 décrit le registre ; cette exception est la seule.
+Une tâche quotidienne à 4h00 (Europe/Paris) parcourt le registre et supprime.
+Une erreur sur une table n'interrompt pas le traitement des autres. Le compte
+rendu indique le nombre de lignes supprimées par table.
 
 ## Exclusions de purge
 

@@ -199,6 +199,17 @@ Chaque dossier sous `src/modules/` expose la même interface :
 
 Le noyau découvre les modules automatiquement. Aucune liste à maintenir à la main.
 
+**Un module présent dans `src/modules/` qui échoue à s'importer arrête le
+démarrage.** Il n'est jamais ignoré.
+
+Cette règle n'est pas une préférence : le traitement des migrations distingue un
+module retiré d'un module actif sur la seule absence de sources. Un module
+présent mais non importable produirait la même absence, et ses migrations
+cesseraient de s'appliquer sans que rien ne le signale. Voir §6.
+
+Cette règle est distincte de la désactivation du §5.5 : un module dont une
+référence Discord est introuvable reste chargé, et ses migrations s'appliquent.
+
 ---
 
 ## 5. Configuration
@@ -345,6 +356,36 @@ toutes les migrations paraîtraient modifiées au premier déploiement et le bot
 refuserait de démarrer.
 
 Chaque module déclare ses propres fichiers de migration.
+
+### Ordre d'application
+
+`core` en premier, puis les autres propriétaires par ordre de nom en
+**comparaison binaire** — jamais `localeCompare`, dont le résultat dépend de
+l'ICU chargée et différerait entre un poste Windows et le VPS. L'ordre ne dépend
+jamais de la découverte du système de fichiers.
+
+**Aucune déclaration de dépendance entre modules.** Leur ordre est déterministe
+mais arbitraire : rien ne garantit qu'il corresponde à un ordre de dépendance. La
+règle qui rend cette absence tenable est qu'une migration de module ne référence
+que ses propres tables ou celles du noyau. Aucune table des phases 1 à 6 n'y
+contrevient. Si une table partagée devenait nécessaire, elle appartiendrait au
+noyau.
+
+### Module retiré
+
+La détection de divergence distingue sur la présence du **propriétaire**, non sur
+celle du fichier seul. Un propriétaire pour lequel aucune source n'est fournie
+produit un avertissement journalisé, pas une erreur — sinon retirer ou désactiver
+un module rendrait le démarrage impossible.
+
+**Les tables d'un module retiré ne sont jamais supprimées.** Un retrait peut être
+temporaire, et les données — tickets archivés, transcriptions — n'ont pas à
+disparaître parce qu'on a commenté un dossier. Le nettoyage est une décision
+humaine.
+
+« Source fournie » dépend de la présence du module sur disque, jamais d'un état
+d'activation. C'est ce qui rend indispensable la règle du §4 : un module présent
+mais non importable arrête le démarrage.
 
 ---
 

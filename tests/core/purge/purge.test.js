@@ -1,0 +1,282 @@
+import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { describe, test } from 'node:test';
+
+import { createDatabase } from '../../../src/core/database/index.js';
+import { createPurgeRegistry, msUntilNextRun } from '../../../src/core/purge/index.js';
+
+const fakeLogger = () => {
+  const entries = [];
+  const record = (level) => (message, context) => entries.push({ level, message, context });
+
+  return {
+    entries,
+    error: record('error'),
+    warn: record('warn'),
+    info: record('info'),
+    debug: record('debug'),
+    of: (level) => entries.filter((entry) => entry.level === level),
+  };
+};
+
+const RETENTIONS = {
+  'logs.retention.message_content_days': 30,
+  'logs.retention.structural_days': 90,
+  'purge.hour': 4,
+  'bot.timezone': 'Europe/Paris',
+};
+
+const fakeConfig = {
+  get: (path) => {
+    if (!(path in RETENTIONS)) throw new Error(`chemin de configuration inconnu : ${path}`);
+    return RETENTIONS[path];
+  },
+};
+
+const daysAgo = (days) => new Date(Date.now() - days * 86_400_000).toISOString();
+
+/** Base réelle : la purge est du SQL, la simuler ne prouverait rien. */
+const sandbox = (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'cubex-purge-'));
+  const logger = fakeLogger();
+  const database = createDatabase({ file: join(root, 'test.sqlite'), logger });
+
+  t.after(() => {
+    database.close();
+    rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+  });
+
+  database.exec('CREATE TABLE log_events (id INTEGER PRIMARY KEY, created_at TEXT NOT NULL)');
+  database.exec('CREATE TABLE log_contents (id INTEGER PRIMARY KEY, created_at TEXT NOT NULL)');
+
+  const insert = (table, ...dates) => {
+    const statement = database.prepare(`INSERT INTO ${table} (created_at) VALUES (?)`);
+    for (const date of dates) statement.run(date);
+  };
+
+  const count = (table) =>
+    database.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n;
+
+  const registry = createPurgeRegistry({ database, config: fakeConfig, logger });
+
+  return { database, logger, registry, insert, count };
+};
+
+describe('register', () => {
+  test('inscrit les déclarations d\'un module', (t) => {
+    const { registry } = sandbox(t);
+
+    registry.register('logs', [
+      { table: 'log_events', date_column: 'created_at', retention_key: 'logs.retention.structural_days' },
+      { table: 'log_contents', date_column: 'created_at', retention_key: 'logs.retention.message_content_days' },
+    ]);
+
+    assert.equal(registry.size, 2);
+  });
+
+  test('refuse un identifiant SQL qui n\'en est pas un', (t) => {
+    const { registry } = sandbox(t);
+
+    // Table et colonne sont interpolées : SQLite ne les accepte pas en
+    // paramètre lié. La porte se ferme ici plutôt que de compter sur l'appelant.
+    for (const table of ['log events', 'log-events', 'logs; DROP TABLE users', '', 42]) {
+      assert.throws(
+        () => registry.register('x', [{ table, date_column: 'created_at', retention_key: 'k' }]),
+        /identifiant SQL/,
+      );
+    }
+  });
+
+  test('refuse une date_column mal formée et une clé de rétention absente', (t) => {
+    const { registry } = sandbox(t);
+
+    assert.throws(
+      () => registry.register('x', [{ table: 't', date_column: 'a b', retention_key: 'k' }]),
+      /identifiant SQL/,
+    );
+    assert.throws(
+      () => registry.register('x', [{ table: 't', date_column: 'created_at' }]),
+      /retention_key/,
+    );
+  });
+});
+
+describe('run', () => {
+  const inscrire = (registry) =>
+    registry.register('logs', [
+      { table: 'log_events', date_column: 'created_at', retention_key: 'logs.retention.structural_days' },
+      { table: 'log_contents', date_column: 'created_at', retention_key: 'logs.retention.message_content_days' },
+    ]);
+
+  test('supprime au-delà de la rétention et conserve en deçà', (t) => {
+    const { registry, insert, count } = sandbox(t);
+    inscrire(registry);
+
+    insert('log_events', daysAgo(100), daysAgo(91), daysAgo(89), daysAgo(1));
+    insert('log_contents', daysAgo(40), daysAgo(31), daysAgo(29));
+
+    const report = registry.run();
+
+    assert.equal(count('log_events'), 2);
+    assert.equal(count('log_contents'), 1);
+    assert.deepEqual(report, [
+      { owner: 'logs', table: 'log_events', deleted: 2 },
+      { owner: 'logs', table: 'log_contents', deleted: 2 },
+    ]);
+  });
+
+  test('applique une durée différente par table', (t) => {
+    const { registry, insert, count } = sandbox(t);
+    inscrire(registry);
+
+    // 60 jours : au-delà de la rétention des contenus (30), en deçà de celle
+    // des métadonnées (90). C'est ce que le socle §10 demande.
+    insert('log_events', daysAgo(60));
+    insert('log_contents', daysAgo(60));
+
+    registry.run();
+
+    assert.equal(count('log_events'), 1);
+    assert.equal(count('log_contents'), 0);
+  });
+
+  test('une erreur sur une table n\'interrompt pas les autres', (t) => {
+    const { registry, logger, insert, count } = sandbox(t);
+
+    registry.register('fantome', [
+      { table: 'table_absente', date_column: 'created_at', retention_key: 'logs.retention.structural_days' },
+    ]);
+    inscrire(registry);
+
+    insert('log_events', daysAgo(100));
+
+    const report = registry.run();
+
+    assert.match(report[0].error, /table_absente/);
+    assert.equal(report[1].deleted, 1, 'la table suivante a bien été traitée');
+    assert.equal(count('log_events'), 0);
+    assert.match(logger.of('error')[0].message, /purge impossible/);
+  });
+
+  test('signale une clé de rétention inconnue sans bloquer le reste', (t) => {
+    const { registry, insert, count } = sandbox(t);
+
+    registry.register('casse', [
+      { table: 'log_events', date_column: 'created_at', retention_key: 'inexistante.cle' },
+    ]);
+    registry.register('logs', [
+      { table: 'log_contents', date_column: 'created_at', retention_key: 'logs.retention.message_content_days' },
+    ]);
+
+    insert('log_events', daysAgo(100));
+    insert('log_contents', daysAgo(100));
+
+    const report = registry.run();
+
+    assert.match(report[0].error, /inexistante\.cle/);
+    assert.equal(count('log_events'), 1, 'rien n\'est supprimé sans durée connue');
+    assert.equal(count('log_contents'), 0);
+  });
+
+  test('rend un compte rendu par table', (t) => {
+    const { registry, logger, insert } = sandbox(t);
+    inscrire(registry);
+    insert('log_events', daysAgo(100), daysAgo(100));
+
+    registry.run();
+
+    const compte = logger.of('info').at(-1);
+    assert.match(compte.message, /purge quotidienne/);
+    assert.equal(compte.context.deleted, 2);
+    assert.equal(compte.context.failed, 0);
+    assert.equal(compte.context.tables.length, 2);
+  });
+
+  test('ne fait rien quand aucun module ne déclare', (t) => {
+    const { registry } = sandbox(t);
+
+    assert.deepEqual(registry.run(), []);
+  });
+});
+
+describe('planification', () => {
+  test('s\'inscrit dans la séquence d\'arrêt', (t) => {
+    const root = mkdtempSync(join(tmpdir(), 'cubex-purge-'));
+    const logger = fakeLogger();
+    const database = createDatabase({ file: join(root, 'test.sqlite'), logger });
+    const inscrites = [];
+
+    t.after(() => {
+      database.close();
+      rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+    });
+
+    createPurgeRegistry({
+      database,
+      config: fakeConfig,
+      logger,
+      shutdown: { register: (name, close) => inscrites.push({ name, close }) },
+    });
+
+    assert.deepEqual(inscrites.map((entry) => entry.name), ['purge']);
+  });
+
+  test('arme puis désarme la minuterie', (t) => {
+    const { registry, logger } = sandbox(t);
+
+    registry.start();
+
+    const planifiée = logger.of('info').at(-1);
+    assert.match(planifiée.message, /purge planifiée/);
+    assert.equal(planifiée.context.hour, 4);
+    assert.equal(planifiée.context.timezone, 'Europe/Paris');
+
+    assert.doesNotThrow(() => registry.stop());
+    assert.doesNotThrow(() => registry.stop());
+  });
+});
+
+describe('msUntilNextRun', () => {
+  const at = (iso) => new Date(iso);
+
+  test('vise la prochaine occurrence dans la journée', () => {
+    // 01h00 heure de Paris en été = 23h00 UTC la veille.
+    const delay = msUntilNextRun(4, 'Europe/Paris', at('2026-08-12T23:00:00Z'));
+
+    assert.equal(delay, 3 * 3_600_000);
+  });
+
+  test('reporte au lendemain quand l\'heure est passée', () => {
+    // 10h00 heure de Paris : 4h est derrière nous, il reste 18 heures.
+    const delay = msUntilNextRun(4, 'Europe/Paris', at('2026-08-13T08:00:00Z'));
+
+    assert.equal(delay, 18 * 3_600_000);
+  });
+
+  test('reste dans les vingt-quatre heures quelle que soit l\'heure', () => {
+    for (let heure = 0; heure < 24; heure += 1) {
+      const delay = msUntilNextRun(4, 'Europe/Paris', at(`2026-08-13T${String(heure).padStart(2, '0')}:30:00Z`));
+
+      assert.ok(delay > 0 && delay <= 86_400_000, `heure ${heure} : ${delay} ms`);
+    }
+  });
+
+  test('raisonne en heure locale et non en UTC', () => {
+    // Le même instant vise 4h Paris et 4h Tokyo à des moments différents.
+    const instant = at('2026-08-13T08:00:00Z');
+
+    assert.notEqual(
+      msUntilNextRun(4, 'Europe/Paris', instant),
+      msUntilNextRun(4, 'Asia/Tokyo', instant),
+    );
+  });
+
+  test('lit minuit comme 0 et non comme 24', () => {
+    // En hourCycle h24, minuit se lit « 24 » et le calcul serait faux d'un jour.
+    const delay = msUntilNextRun(4, 'UTC', at('2026-08-13T00:00:00Z'));
+
+    assert.equal(delay, 4 * 3_600_000);
+  });
+});
