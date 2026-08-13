@@ -92,9 +92,18 @@ const HEX_PATTERN = /^#[0-9a-fA-F]{6}$/;
 /** Clé de palette : minuscules, chiffres et tirets bas — `brand`, `success`. */
 const PALETTE_REF_PATTERN = /^[a-z][a-z0-9_]*$/;
 
+const BAD_HEX =
+  'couleur hexadécimale attendue : un dièse suivi de six chiffres hexadécimaux (#F60321)';
+
 const BAD_COLOR =
   'couleur attendue : une clé de la palette de embeds.yml (brand, success, error, info) ' +
   'ou un hexadécimal à six chiffres (#F60321)';
+
+/**
+ * Couleur littérale. Réservée à la définition de la palette elle-même, qui ne
+ * peut pas se désigner par ses propres clés.
+ */
+export const hexColor = () => z.string({ error: BAD_HEX }).regex(HEX_PATTERN, BAD_HEX);
 
 /**
  * Couleur d'embed.
@@ -104,9 +113,7 @@ const BAD_COLOR =
  * configuration, la figer ici en ferait une valeur codée en dur.
  */
 export const color = () =>
-  z.union([z.string().regex(HEX_PATTERN), z.string().regex(PALETTE_REF_PATTERN)], {
-    error: BAD_COLOR,
-  });
+  z.union([hexColor(), z.string().regex(PALETTE_REF_PATTERN)], { error: BAD_COLOR });
 
 // ---------------------------------------------------------------------------
 // Références vers messages.yml

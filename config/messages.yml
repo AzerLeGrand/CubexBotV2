@@ -1,0 +1,31 @@
+# Tous les textes destinés aux utilisateurs.
+#
+# Aucun réglage technique ici — ils vivent dans config.yml.
+#
+# Les variables sont entre accolades simples et nommées en anglais, comme les
+# clés de configuration : {username}, {count}, {errors}. Une variable non
+# fournie à l'exécution produit une erreur journalisée, jamais un affichage vide.
+
+commands:
+  denied:
+    title: "Accès refusé"
+    description: "Cette commande est réservée à l'équipe."
+  unavailable:
+    title: "Fonctionnalité indisponible"
+    description: >-
+      Cette commande dépend d'un salon ou d'un rôle que le bot n'a pas trouvé au
+      démarrage. Un membre de l'équipe technique a été prévenu.
+
+config:
+  reloaded:
+    title: "Configuration rechargée"
+    description: "Les trois fichiers ont été relus et validés."
+  reload_failed:
+    title: "Rechargement refusé"
+    # {count} et {errors} sont fournis par la commande. La configuration en
+    # place n'est pas remplacée tant que la nouvelle n'est pas valide.
+    description: |-
+      La configuration en place reste active, le bot continue de tourner.
+
+      {count} anomalie(s) relevée(s) :
+      {errors}

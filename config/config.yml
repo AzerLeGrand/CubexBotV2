@@ -1,0 +1,46 @@
+# Réglages techniques : identifiants, seuils, délais, bascules.
+#
+# Aucun texte destiné à un utilisateur ici — ils vivent dans messages.yml.
+# Aucun secret ici — ils vivent dans .env.
+#
+# TOUT IDENTIFIANT DISCORD EST ENTRE GUILLEMETS. Un identifiant fait 17 à 20
+# chiffres ; écrit sans guillemets, il est lu comme un nombre et ses derniers
+# chiffres sont tronqués silencieusement. C'est la panne qui a arrêté la version
+# précédente du bot.
+#
+# Les identifiants ci-dessous sont des valeurs de substitution. Le bot démarre
+# avec, mais signale à la connexion que les références sont introuvables et
+# désactive les fonctionnalités concernées.
+
+bot:
+  # Serveur Cubex. Le bot n'opère que sur celui-ci.
+  guild_id: "000000000000000000"
+
+# Permissions par commande. Une liste vide est refusée : pour ouvrir une
+# commande à tous, écrire le littéral "public".
+commands:
+  reload:
+    allowed_roles:
+      - "000000000000000000" # Owner
+      - "000000000000000000" # Admin
+
+database:
+  # Chemin relatif à la racine du projet. Le dossier est exclu de Git.
+  file: "data/cubex.sqlite"
+
+logging:
+  # error | warn | info | debug
+  level: "info"
+  directory: "logs"
+  # Durée de conservation des journaux sur disque.
+  retention_days: 30
+
+purge:
+  # Exécution quotidienne, au creux de fréquentation.
+  hour: 4
+  timezone: "Europe/Paris"
+
+minecraft:
+  # Le pont vers le serveur Minecraft est reporté hors v1. Les commandes qui en
+  # dépendent répondent que la fonctionnalité n'est pas active.
+  enabled: false

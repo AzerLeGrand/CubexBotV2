@@ -1,0 +1,39 @@
+# Gabarits d'affichage. Aucune logique ici, aucun texte non plus : un gabarit ne
+# porte que des renvois vers messages.yml et une couleur.
+
+# Les quatre clés sont une interface publique : le module d'embeds de la phase 5
+# les expose telles quelles au staff. Ne pas les renommer.
+colors:
+  # Extrait du logo Cubex.
+  brand: "#F60321"
+  success: "#57F287"
+  # Orange volontaire : le rouge Discord standard (#ED4245) est trop proche du
+  # rouge de marque pour être distingué d'un coup d'œil. Ne pas le « corriger ».
+  error: "#E67E22"
+  info: "#5865F2"
+
+# Commun à tous les embeds.
+footer:
+  text: "Cubex"
+  timestamp: true
+
+templates:
+  command_denied:
+    color: "error"
+    title_key: "commands.denied.title"
+    description_key: "commands.denied.description"
+
+  feature_unavailable:
+    color: "error"
+    title_key: "commands.unavailable.title"
+    description_key: "commands.unavailable.description"
+
+  config_reloaded:
+    color: "success"
+    title_key: "config.reloaded.title"
+    description_key: "config.reloaded.description"
+
+  config_reload_failed:
+    color: "error"
+    title_key: "config.reload_failed.title"
+    description_key: "config.reload_failed.description"
