@@ -52,20 +52,36 @@ fichiers `01-*.md` à `06-*.md`.
 | Machine | VPS IONOS, `217.160.195.134`, hôte `cubex-bot-discord` |
 | Système | Debian 13 (trixie), sans panneau d'hébergement |
 | Runtime | Node.js 24 LTS (24.19.0, dépôt NodeSource) |
-| Superviseur | pm2 7.0.3, unité systemd `pm2-cubexbot.service` |
-| Utilisateur | `cubexbot` |
+| Superviseur | pm2 7.0.3, unité systemd `pm2-cubexbot.service` || Utilisateur | `cubexbot` |
 | Fuseau | `Europe/Paris`, déclaré dans `bot.timezone` |
 | Mémoire | 1,8 Go + 2 Go de swap |
 
 Aucun service web n'est exposé. Le pare-feu n'autorise que SSH en entrée.
+
+### Arrêt propre et pm2
+
+**pm2 envoie `SIGINT` par défaut, pas `SIGTERM`, et attend 1600 ms avant
+`SIGKILL`.** Ce délai est trop court pour drainer les journaux, exécuter le
+checkpoint WAL de SQLite et déconnecter le client Discord.
+
+`ecosystem.config.cjs` doit donc relever `kill_timeout`. Le budget total de
+sortie du bot reste strictement inférieur à cette valeur.
+
+Le gestionnaire d'erreurs écoute `SIGTERM` **et** `SIGINT` : le premier couvre un
+arrêt système, le second pm2 et l'interruption clavier en développement. Ces
+signaux sont un arrêt normal — code de sortie 0, journalisation en `info`, jamais
+en `error`.
 
 ### Dépendances principales
 
 - `discord.js` — client Discord
 - `better-sqlite3` — base de données
 - `js-yaml` — lecture des fichiers de configuration
-- `zod` — validation de schéma
-- bibliothèque de journalisation (à arbitrer à l'implémentation)
+- `zod` — validation de schéma (**version 4**, la syntaxe d'erreur diffère de la 3)
+- `winston` et `winston-daily-rotate-file` — journalisation
+
+`.env` est chargé par `process.loadEnvFile()`, natif et stable depuis Node 24.10.
+Aucune dépendance `dotenv`.
 
 **Choix de la base — justification.** `node:sqlite`, intégré à Node 24, est classé
 *Stability 1.2 — Release candidate* : l'API est stabilisée mais le module n'a pas
@@ -492,15 +508,10 @@ Discord.
 
 À trancher avant ou pendant l'implémentation :
 
-1. **Bibliothèque de journalisation** — à arbitrer selon l'empreinte mémoire.
-   Contrainte de conception : le module de configuration **n'importe jamais** le
-   logger. Il émet des événements et reçoit un logger injecté après
-   construction, faute de quoi le cycle `config → logging → config` est
-   inévitable (le §5.5 impose de journaliser depuis la validation).
-2. **Identifiants réels** des rôles et salons — à collecter après suppression des
+1. **Identifiants réels** des rôles et salons — à collecter après suppression des
    rôles orphelins des anciens bots (`c-link`, `cubex bot`, `cubex link`, et les
    deux rôles d'intégration verrouillés).
-3. **Valeurs par défaut restant à fixer**, réparties dans les modules :
+2. **Valeurs par défaut restant à fixer**, réparties dans les modules :
    nombre de tentatives de vérification, seuil de bascule vers le fichier joint,
    fenêtre de groupement, entrées par page du casier, délai entre deux ouvertures
    de ticket, plafond de messages techniques par minute.
@@ -530,6 +541,16 @@ plus longtemps que prévu sans que personne ne le sache.
 | `allowed_roles` vide | refusé, littéral `"public"` requis | §8.2 |
 | Fenêtre de groupement | deux clés indépendantes | `02` §5 et `06` §5 |
 | Fuseau horaire | clé unique `bot.timezone`, jamais par module | §3 et §10 |
+| Bibliothèque de journalisation | `winston` + `winston-daily-rotate-file` | §3 |
+
+**Contrainte conservée malgré la décision :** le module de configuration
+n'importe jamais le logger. Il émet des événements et reçoit un logger injecté
+après construction, faute de quoi le cycle `config → logging → config` est
+inévitable — le §5.5 impose de journaliser depuis la validation. La même règle
+vaut pour le gestionnaire d'erreurs.
+
+`src/core/logging/` expose sa propre interface. Aucun autre fichier du projet
+n'importe `winston`.
 
 ### Fuseau horaire unique
 

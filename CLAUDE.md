@@ -36,6 +36,22 @@ défaut, jamais un raccourci.
 Ne jamais écrire un secret dans un fichier YAML. Ne jamais écrire un réglage
 fonctionnel dans `.env`.
 
+### Les deux seules exceptions
+
+Une valeur reste en dur dans un seul cas : quand la configurer serait une fausse
+configurabilité. Deux formes.
+
+**Elle est nécessaire avant que la configuration soit lisible.** Les messages
+d'erreur du chargeur, le plafond de drain du gestionnaire d'erreurs. Une clé que
+le code ne pourrait pas lire au moment où il en a besoin ne configure rien.
+
+**La configurer permettrait de contourner ce qu'elle protège.** Les motifs de
+détection de secrets : les rendre réglables depuis le fichier qu'ils surveillent
+reviendrait à pouvoir les désactiver depuis l'endroit qu'ils protègent.
+
+Tout le reste vient de la configuration. En cas de doute, la valeur est
+configurable.
+
 ## Identifiants Discord
 
 **Toujours des chaînes de caractères, jamais des nombres.** Un identifiant

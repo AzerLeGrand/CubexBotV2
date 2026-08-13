@@ -6,4 +6,4 @@ export {
   toError,
 } from './app-error.js';
 
-export { DEFAULT_DRAIN_TIMEOUT_MS, installGlobalHandlers } from './handler.js';
+export { createShutdown, DEFAULT_STEP_TIMEOUT_MS } from './handler.js';
