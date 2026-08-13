@@ -52,7 +52,8 @@ fichiers `01-*.md` à `06-*.md`.
 | Machine | VPS IONOS, `217.160.195.134`, hôte `cubex-bot-discord` |
 | Système | Debian 13 (trixie), sans panneau d'hébergement |
 | Runtime | Node.js 24 LTS (24.19.0, dépôt NodeSource) |
-| Superviseur | pm2 7.0.3, unité systemd `pm2-cubexbot.service` || Utilisateur | `cubexbot` |
+| Superviseur | pm2 7.0.3, unité systemd `pm2-cubexbot.service` |
+| Utilisateur | `cubexbot` |
 | Fuseau | `Europe/Paris`, déclaré dans `bot.timezone` |
 | Mémoire | 1,8 Go + 2 Go de swap |
 
@@ -64,13 +65,41 @@ Aucun service web n'est exposé. Le pare-feu n'autorise que SSH en entrée.
 `SIGKILL`.** Ce délai est trop court pour drainer les journaux, exécuter le
 checkpoint WAL de SQLite et déconnecter le client Discord.
 
-`ecosystem.config.cjs` doit donc relever `kill_timeout`. Le budget total de
-sortie du bot reste strictement inférieur à cette valeur.
+`ecosystem.config.cjs` déclare donc `kill_signal: 'SIGTERM'` — signal d'arrêt
+conventionnel, celui qu'emploiera systemd — et relève `kill_timeout` à **12
+secondes**.
+
+Ce budget se décompose en trois étapes plafonnées à 3 secondes chacune :
+
+| Étape | Motif du plafond |
+|-------|------------------|
+| Client Discord | fermeture du WebSocket, tributaire du réseau |
+| Base de données | checkpoint WAL puis fermeture du fichier |
+| Journaux | drain des tampons |
+
+Soit 9 secondes au pire, plus 3 de marge pour une machine à 1,8 Go dont une part
+du processus peut être en swap. Ce délai n'est subi que si le bot ne sort pas de
+lui-même.
+
+**Invariant :** la somme des plafonds d'étape reste strictement inférieure à
+`kill_timeout`. Ajouter une quatrième ressource à fermer impose de revoir la
+valeur. L'invariant est rappelé dans `ecosystem.config.cjs` et dans le code.
 
 Le gestionnaire d'erreurs écoute `SIGTERM` **et** `SIGINT` : le premier couvre un
-arrêt système, le second pm2 et l'interruption clavier en développement. Ces
-signaux sont un arrêt normal — code de sortie 0, journalisation en `info`, jamais
-en `error`.
+arrêt système, le second pm2 sous sa configuration par défaut et l'interruption
+clavier en développement. Ces signaux sont un arrêt normal — code de sortie 0,
+journalisation en `info`, jamais en `error`.
+
+**Ordre de fermeture : LIFO**, l'inverse de l'inscription. Le drain des journaux,
+inscrit d'office en premier, part en dernier et peut donc relater la fermeture de
+la base et du client. Chaque ressource s'inscrit par son nom sans que le
+gestionnaire ait à la connaître.
+
+**`ecosystem.config.cjs` ne déclare aucun bloc `env`.** `process.loadEnvFile()`
+n'écrase pas une variable déjà présente dans l'environnement : un `NODE_ENV` posé
+par pm2 l'emporterait silencieusement sur `.env`, et le même dépôt se
+comporterait différemment selon son mode de lancement. `.env` reste la source
+unique, conformément au §5.7.
 
 ### Dépendances principales
 
@@ -78,10 +107,33 @@ en `error`.
 - `better-sqlite3` — base de données
 - `js-yaml` — lecture des fichiers de configuration
 - `zod` — validation de schéma (**version 4**, la syntaxe d'erreur diffère de la 3)
-- `winston` et `winston-daily-rotate-file` — journalisation
+- `winston`, `winston-transport`, `triple-beam` — journalisation
 
 `.env` est chargé par `process.loadEnvFile()`, natif et stable depuis Node 24.10.
 Aucune dépendance `dotenv`.
+
+**Rotation des journaux — paquet écarté.** `winston-daily-rotate-file` n'est pas
+utilisé : sans commit depuis février 2024, il épingle `file-stream-rotator`, figé
+depuis janvier 2022. Aucun correctif ne serait à attendre si un défaut
+apparaissait sous une future version de Node.
+
+La rotation est assurée par un transport écrit dans
+`src/core/logging/rotating-file.js` : un descripteur, une vérification de date à
+l'écriture, un balayage du dossier au changement de jour et à la construction.
+Aucune minuterie — rien à armer, à désarmer, ni à oublier à l'extinction.
+
+Ce transport purge lui-même les fichiers dépassant la rétention. C'est une
+exception au registre de purge du §10, assumée : le registre est typé pour du SQL
+(`table`, `date_column`, `retention_key`), lui greffer une seconde nature pour un
+seul cas d'usage le compliquerait plus qu'il ne le simplifierait. La durée vient
+de `config.yml` comme tout le reste.
+
+**Cadence de publication de winston.** Le projet est sain — mainteneur actif,
+matrice d'intégration continue montée à Node 22, 24 et 26 en juin 2026,
+contributions externes acceptées — mais publie lentement : la 3.19.0 date de
+décembre 2025 et les correctifs de l'été 2026 ne sont pas encore sur npm. Sans
+effet aujourd'hui ; si un correctif nous devient nécessaire, l'option est
+d'épingler un commit.
 
 **Choix de la base — justification.** `node:sqlite`, intégré à Node 24, est classé
 *Stability 1.2 — Release candidate* : l'API est stabilisée mais le module n'a pas
@@ -541,7 +593,7 @@ plus longtemps que prévu sans que personne ne le sache.
 | `allowed_roles` vide | refusé, littéral `"public"` requis | §8.2 |
 | Fenêtre de groupement | deux clés indépendantes | `02` §5 et `06` §5 |
 | Fuseau horaire | clé unique `bot.timezone`, jamais par module | §3 et §10 |
-| Bibliothèque de journalisation | `winston` + `winston-daily-rotate-file` | §3 |
+| Bibliothèque de journalisation | `winston`, rotation par transport maison | §3 |
 
 **Contrainte conservée malgré la décision :** le module de configuration
 n'importe jamais le logger. Il émet des événements et reçoit un logger injecté
