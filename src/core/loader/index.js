@@ -10,6 +10,9 @@ import { fromRoot } from '../../utils/paths.js';
  *
  * Le noyau découvre les modules automatiquement : aucune liste à maintenir à la
  * main, donc aucune occasion d'oublier d'y inscrire un module.
+ *
+ * Ce dossier s'appelle `loader` et non `modules` : `src/core/modules/` et
+ * `src/modules/` se ressembleraient trop, et les imports se liraient mal.
  */
 
 export const MODULES_DIR = fromRoot('src', 'modules');

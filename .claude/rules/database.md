@@ -91,18 +91,37 @@ Le compte rendu indique le nombre de lignes supprimées par table.
 
 ### Format obligatoire de `date_column`
 
-**La colonne doit contenir un horodatage ISO 8601 en TEXT.** Ce n'est pas une
-préférence de style, c'est une condition de sûreté.
+**La colonne doit contenir un horodatage ISO 8601 strict en TEXT**, avec le `T`
+séparateur : `2026-08-13T04:00:00.000Z`. Ce n'est pas une préférence de style,
+c'est une condition de sûreté, et deux pièges distincts la justifient.
 
-SQLite ordonne les types avant les valeurs : `NULL < INTEGER < TEXT`. Une colonne
-stockée en entier Unix, comparée à un seuil ISO en TEXT, rend
-`date_column < cutoff` **toujours vrai** — la purge ne se tromperait pas de
-bornes, elle viderait la table entière, silencieusement, à 4 h du matin.
+**Le mauvais type.** SQLite ordonne les types avant les valeurs :
+`NULL < INTEGER < TEXT`. Une colonne stockée en entier Unix, comparée à un seuil
+ISO en TEXT, rend `date_column < cutoff` **toujours vrai** — la purge viderait la
+table entière, silencieusement, à 4 h du matin.
 
-Une convention documentée ne protège pas de cette erreur. Le registre **vérifie**
-au premier passage sur chaque table : lecture d'une valeur non nulle de la
-colonne, contrôle de la forme ISO 8601, refus de purger cette table sinon. Table
-vide, rien à vérifier, report au passage suivant.
+**Le mauvais séparateur.** `datetime('now')` produit `2026-08-13 04:00:00`, avec
+un espace. C'est bien du TEXT, donc la comparaison ne déraille pas sur les types,
+mais l'espace (`0x20`) précède le `T` (`0x54`) : toutes les lignes du jour
+passeraient pour antérieures au seuil. Une purge décalée d'une journée, tous les
+jours, indétectable à l'œil.
+
+**Règle qui en découle : n'utilisez jamais `datetime('now')`.**
+
+| Besoin | Écriture |
+|--------|----------|
+| Horodatage écrit par le code | `new Date().toISOString()` — la voie normale |
+| Valeur par défaut en SQL, si vraiment nécessaire | `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')` |
+
+Le registre **vérifie** au premier passage sur chaque table : lecture d'une
+valeur non nulle, contrôle de la forme, refus de purger cette table sinon. Table
+vide, rien à vérifier, report au passage suivant. Une erreur sur une table
+n'interrompt pas les autres.
+
+La valeur lue n'est **jamais citée** dans le message d'erreur : si `date_column`
+désignait la mauvaise colonne, ce serait du contenu de message qui partirait au
+journal, puis vers Discord en phase 6. Le message donne le type et le caractère
+en position 10, ce qui suffit à distinguer les deux cas.
 
 ### Validation des identifiants SQL
 

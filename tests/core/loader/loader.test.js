@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, test } from 'node:test';
 
-import { loadModules, migrationSources, ModuleLoadError } from '../../../src/core/modules/index.js';
+import { loadModules, migrationSources, ModuleLoadError } from '../../../src/core/loader/index.js';
 
 const fakeLogger = () => {
   const entries = [];

@@ -166,6 +166,7 @@ src/
     embeds/        moteur de rendu
     purge/         registre et tâche planifiée
     commands/      enregistrement et routage des commandes slash
+    loader/        découverte et chargement des modules
     errors/        types d'erreur et gestionnaire global
   modules/         un dossier par module fonctionnel
   minecraft/       interface et implémentation inerte
@@ -188,14 +189,21 @@ CLAUDE.md
 
 Chaque dossier sous `src/modules/` expose la même interface :
 
-| Export | Rôle |
-|--------|------|
-| `name` | identifiant du module |
-| `commands` | commandes slash fournies |
-| `events` | écouteurs d'événements Discord |
-| `migrations` | fichiers SQL du module |
-| `retention` | déclarations pour le registre de purge |
-| `init(ctx)` | initialisation, reçoit le contexte du noyau |
+| Export | Obligatoire | Rôle |
+|--------|-------------|------|
+| `name` | oui | identifiant du module, **égal au nom du dossier** |
+| `commands` | non | commandes slash fournies |
+| `events` | non | écouteurs d'événements Discord |
+| `migrations` | non | fichiers SQL du module |
+| `retention` | non | déclarations pour le registre de purge |
+| `init(ctx)` | non | initialisation, reçoit le contexte du noyau |
+
+`init` est facultative : un module purement déclaratif — des migrations et des
+déclarations de rétention, sans état à monter — n'a pas à écrire une fonction
+vide pour la forme.
+
+`name` doit égaler le nom du dossier. Il porte l'identité des migrations et des
+commandes ; un écart les ferait diverger en silence.
 
 Le noyau découvre les modules automatiquement. Aucune liste à maintenir à la main.
 
@@ -507,11 +515,17 @@ Aucun module n'écrit sa propre logique de suppression. Chaque module déclare :
 Une tâche planifiée parcourt le registre et supprime les lignes dépassant la durée
 déclarée.
 
-**`date_column` doit contenir un horodatage ISO 8601 en TEXT**, et le registre le
-vérifie au premier passage sur chaque table. SQLite ordonne les types avant les
-valeurs — `NULL < INTEGER < TEXT` — donc une colonne en entier Unix comparée à un
-seuil ISO rendrait la condition toujours vraie et viderait la table entière.
-Une convention documentée ne suffit pas à écarter un effacement total silencieux.
+**`date_column` doit contenir un horodatage ISO 8601 strict en TEXT**, avec le
+`T` séparateur, et le registre le vérifie au premier passage sur chaque table.
+Deux pièges le justifient : SQLite ordonne les types avant les valeurs
+(`NULL < INTEGER < TEXT`), donc une colonne en entier Unix rendrait la condition
+toujours vraie et viderait la table ; et `datetime('now')` produit un espace là
+où `toISOString()` produit un `T`, or l'espace précède le `T` dans l'ordre
+binaire — la purge serait décalée d'une journée, tous les jours, sans que rien ne
+le signale.
+
+Les horodatages sont donc écrits par le code via `toISOString()`. `datetime('now')`
+est proscrit dans les migrations.
 
 - **Exécution : 4h00**, dans le fuseau défini par `bot.timezone`
   (`Europe/Paris`). Creux de fréquentation.
