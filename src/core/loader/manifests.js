@@ -20,11 +20,14 @@ import { listModuleNames, MODULES_DIR } from './index.js';
  *     export const schema = z.strictObject({ ... });
  *     export const intents = ['GuildMembers', 'GuildMessages'];
  *
- * UN MANIFESTE NE FAIT RIEN D'AUTRE QUE DÉCLARER. Aucun effet de bord, aucun
- * import du noyau, aucune lecture de fichier, aucun appel réseau. C'est la
- * seule chose du projet qui s'exécute dans le vide : il est lu avant les
- * secrets et avant la configuration, donc avant le logger, la base de données
- * et tout le reste. Rien de ce dont il pourrait avoir envie n'existe encore.
+ * UN MANIFESTE NE FAIT RIEN D'AUTRE QUE DÉCLARER. Aucun effet de bord, aucune
+ * lecture de fichier, aucun appel réseau, et aucun import du noyau HORS DES
+ * PRIMITIVES DE SCHÉMA — celles-ci ne sont que des fabriques zod, sans effet de
+ * bord ni dépendance à la configuration, et un identifiant Discord doit passer
+ * par `snowflake()` plutôt que par un `z.string()` nu. C'est la seule chose du
+ * projet qui s'exécute dans le vide : le manifeste est lu avant les secrets et
+ * avant la configuration, donc avant le logger, la base de données et tout le
+ * reste. Rien d'autre de ce dont il pourrait avoir envie n'existe encore.
  *
  * D'où le fichier séparé, plutôt qu'un export de plus dans `index.js` : ce
  * dernier importe librement le noyau et déclare `init(ctx)`. L'importer avant

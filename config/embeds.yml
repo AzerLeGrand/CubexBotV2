@@ -41,6 +41,65 @@ templates:
     title_key: "components.expired.title"
     description_key: "components.expired.description"
 
+  # --- Vérification (phase 1) ------------------------------------------------
+
+  # Message permanent du salon de vérification : c'est la première chose que
+  # voit un nouvel arrivant, d'où la couleur de marque.
+  verification_welcome:
+    color: "brand"
+    title_key: "verification.welcome.title"
+    description_key: "verification.welcome.description"
+
+  verification_challenge:
+    color: "info"
+    title_key: "verification.challenge.title"
+    description_key: "verification.challenge.description"
+
+  verification_success:
+    color: "success"
+    title_key: "verification.success.title"
+    description_key: "verification.success.description"
+
+  # Un code expiré et un membre déjà vérifié ne sont pas des échecs : la couleur
+  # d'information évite de faire passer une situation banale pour une faute.
+  verification_expired:
+    color: "info"
+    title_key: "verification.expired.title"
+    description_key: "verification.expired.description"
+
+  verification_already_verified:
+    color: "info"
+    title_key: "verification.already_verified.title"
+    description_key: "verification.already_verified.description"
+
+  verification_wrong_code:
+    color: "error"
+    title_key: "verification.wrong_code.title"
+    description_key: "verification.wrong_code.description"
+
+  verification_blocked:
+    color: "error"
+    title_key: "verification.blocked.title"
+    description_key: "verification.blocked.description"
+
+  verification_role_failed:
+    color: "error"
+    title_key: "verification.role_failed.title"
+    description_key: "verification.role_failed.description"
+
+  # Les deux alertes partent dans un salon staff, jamais vers le membre.
+  verification_alert_exhausted:
+    color: "error"
+    title_key: "verification.alerts.exhausted.title"
+    description_key: "verification.alerts.exhausted.description"
+
+  verification_alert_role_failure:
+    color: "error"
+    title_key: "verification.alerts.role_failure.title"
+    description_key: "verification.alerts.role_failure.description"
+
+  # --- Configuration ---------------------------------------------------------
+
   config_reloaded:
     color: "success"
     title_key: "config.reloaded.title"

@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { isAbsolutePath } from '../../../utils/paths.js';
+
 /**
  * Briques de validation communes aux trois fichiers de configuration.
  *
@@ -66,6 +68,62 @@ const BAD_ROLES =
  */
 export const allowedRoles = () =>
   z.union([z.array(snowflake()).min(1, EMPTY_ROLES), z.literal(PUBLIC)], { error: BAD_ROLES });
+
+// ---------------------------------------------------------------------------
+// Sous-sections
+// ---------------------------------------------------------------------------
+
+/**
+ * Sous-section obligatoire d'un fragment de module.
+ *
+ * `buildConfigSchema()` applique déjà ce traitement à la RACINE d'un fragment,
+ * pour la même raison et avec le même effet : `.prefault({})` substitue puis
+ * parse, ce qui produit la liste des clés manquantes plutôt qu'un unique
+ * « expected object » posé sur le groupe entier ; et `null` est normalisé parce
+ * que js-yaml le rend — et non `undefined` — pour une clé dont l'en-tête est
+ * écrit et le corps vide :
+ *
+ *     retention:
+ *
+ * Le geste d'édition est le même à toutes les profondeurs — on écrit l'en-tête,
+ * on est interrompu — et le diagnostic doit l'être aussi. Sans cela, seule la
+ * racine d'une section bénéficie du message utile.
+ *
+ * @param {Record<string, object>} shape clés de la sous-section
+ */
+export const subsection = (shape) =>
+  z.preprocess((value) => (value === null ? undefined : value), z.strictObject(shape).prefault({}));
+
+// ---------------------------------------------------------------------------
+// Chemins
+// ---------------------------------------------------------------------------
+
+const BAD_PATH =
+  "chemin relatif à la racine du projet attendu — un chemin absolu ne survivrait pas au passage " +
+  'du poste de développement au VPS';
+
+const BAD_SEPARATOR =
+  'séparateur de chemin non portable : utiliser / plutôt que \\, Node l\'accepte sur les deux ' +
+  'plateformes alors qu\'un antislash devient un caractère ordinaire du nom de fichier sous Linux';
+
+/**
+ * Chemin de fichier ou de dossier, résolu depuis la racine par `fromRoot()`.
+ *
+ * `config.yml` est versionné et partagé entre le poste Windows et le VPS
+ * Debian : la même valeur doit être jugée de la même façon des deux côtés. La
+ * détection d'un chemin absolu couvre donc les deux conventions, et le
+ * séparateur est imposé — voir `isAbsolutePath()`.
+ *
+ * Vit ici et non dans le schéma du noyau : les fragments des modules en ont
+ * besoin aussi — le chemin de la police du captcha est lu par les deux
+ * plateformes au même titre que celui de la base.
+ */
+export const relativePath = () =>
+  z
+    .string({ error: BAD_PATH })
+    .min(1, BAD_PATH)
+    .refine((value) => !isAbsolutePath(value), { error: BAD_PATH })
+    .refine((value) => !value.includes('\\'), { error: BAD_SEPARATOR });
 
 // ---------------------------------------------------------------------------
 // Durées

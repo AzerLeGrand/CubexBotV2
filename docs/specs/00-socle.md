@@ -345,9 +345,12 @@ arrête le démarrage avec la liste des clés manquantes.
 
 Le manifeste est lu **avant les secrets et avant la configuration**, donc avant
 le logger et la base. Il ne fait rien d'autre que déclarer : aucun effet de
-bord, aucun import du noyau, aucune lecture de fichier, aucun appel réseau.
-C'est ce qui justifie le fichier séparé — `index.js` importe librement le noyau,
-et l'importer si tôt créerait un ordre de dépendance intenable.
+bord, aucune lecture de fichier, aucun appel réseau, et aucun import du noyau
+**hors des primitives de schéma** — de simples fabriques zod, sans effet de bord
+ni dépendance à la configuration, par lesquelles tout identifiant Discord doit
+passer plutôt que par un `z.string()` nu. C'est ce qui justifie le fichier
+séparé : `index.js` importe librement le noyau, et l'importer si tôt créerait un
+ordre de dépendance intenable.
 
 Un manifeste présent mais non importable arrête le démarrage, pour la même
 raison qu'un `index.js` non importable : l'ignorer retirerait sa section de la

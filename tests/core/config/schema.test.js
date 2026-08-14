@@ -2,11 +2,13 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import {
+  buildConfigSchema,
   CORE_SECTION_NAMES,
   CoreConfigSchema,
   unknownSections,
 } from '../../../src/core/config/schema/core.schema.js';
 import { EmbedsSchema, PALETTE_KEYS } from '../../../src/core/config/schema/embeds.schema.js';
+import { loadManifests } from '../../../src/core/loader/manifests.js';
 import { loadYamlFiles } from '../../../src/core/config/loader.js';
 import { MessagesSchema } from '../../../src/core/config/schema/messages.schema.js';
 
@@ -296,11 +298,33 @@ describe('fichiers livrés dans config/', () => {
     assert.deepEqual(errors, []);
   });
 
-  test('config.yml satisfait le schéma du noyau', () => {
-    const result = CoreConfigSchema.safeParse(files.config);
+  test('config.yml satisfait le schéma réellement appliqué au démarrage', async () => {
+    // Contre le schéma COMPOSÉ, jamais contre celui du noyau seul : le noyau
+    // est souple à la racine, et valider `CoreConfigSchema` laisserait la
+    // section de chaque module échapper à la suite de tests — c'est-à-dire tout
+    // ce que le mécanisme de fragments est censé couvrir.
+    const { fragments } = await loadManifests();
+    const result = buildConfigSchema(fragments).safeParse(files.config);
 
     assert.equal(result.success, true, JSON.stringify(result.error?.issues, null, 2));
-    assert.deepEqual(unknownSections(files.config), []);
+    assert.deepEqual(unknownSections(files.config, [...CORE_SECTION_NAMES, ...Object.keys(fragments)]), []);
+  });
+
+  test('chaque module livré déclare bien sa section', async () => {
+    // Garde-fou contre un test qui passerait pour la mauvaise raison : sans
+    // fragment, le test précédent se réduirait au schéma du noyau sans que rien
+    // ne le signale.
+    const { modules, fragments } = await loadManifests();
+
+    for (const module of modules) {
+      if (fragments[module] === undefined) continue;
+
+      assert.notEqual(
+        files.config[module],
+        undefined,
+        `le module ${module} déclare un fragment mais config.yml n'a pas sa section`,
+      );
+    }
   });
 
   test('messages.yml satisfait le schéma', () => {

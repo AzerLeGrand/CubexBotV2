@@ -52,3 +52,65 @@ minecraft:
   # Le pont vers le serveur Minecraft est reporté hors v1. Les commandes qui en
   # dépendent répondent que la fonctionnalité n'est pas active.
   enabled: false
+
+# Contrôle d'accès à l'entrée du serveur (phase 1). Section validée par le
+# fragment de schéma du module, au même titre que les sections du noyau.
+verification:
+  # Seul salon accessible à un membre non vérifié. Introuvable, le module
+  # entier se désactive : sans salon, il n'y a pas de porte d'entrée.
+  channel_id: "1503043771015762143"
+  # Rôle attribué après une vérification réussie. Le rôle du bot doit être
+  # au-dessus de celui-ci dans la hiérarchie, sinon l'attribution échoue.
+  member_role_id: "1381766005604352130"
+
+  challenge:
+    # image uniquement : l'épreuve web est prévue par la spec mais pas écrite.
+    type: image
+    code_length: 6
+    # Cinq minutes. Plafonne à elle seule le rythme de génération : un reclic
+    # pendant la validité rend le même code et la même image.
+    ttl_seconds: 300
+    # Sans 0, O, 1, I ni l : des membres échouent en ayant lu correctement.
+    alphabet: "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+    input:
+      # Un membre qui lit bien l'image ne doit pas échouer sur une majuscule ou
+      # sur un espace collé par un correcteur automatique.
+      case_sensitive: false
+      strip_whitespace: true
+    image:
+      width: 320
+      height: 110
+      # Versionnée dans le dépôt : aucune police n'est garantie présente sur
+      # une Debian minimale. Voir assets/fonts/README.md.
+      font_path: "assets/fonts/DejaVuSans-Bold.ttf"
+      font_size: 52
+      background: "#FFFFFF"
+      text_color: "#1A1A1A"
+      noise_lines: 6
+      noise_dots: 220
+      distortion: 0.35
+
+  # Coupe l'automatisation et signale un membre en difficulté ; ce n'est pas une
+  # résistance au force brute, que la taille du code assure déjà.
+  max_attempts: 5
+
+  alert:
+    # Salon commun aux deux alertes. Introuvable, les deux se taisent et la
+    # vérification continue.
+    channel_id: "1537574082890174648"
+    # Mentionné à l'épuisement des tentatives, jamais à chaque échec.
+    exhausted_role_id: "1503034271546343544"
+    # Mentionné quand l'attribution du rôle échoue : c'est une panne de
+    # configuration du serveur, elle doit remonter à qui peut la corriger.
+    failure_role_id: "1537574425229004841"
+
+  log:
+    # Vérifications réussies. Clé propre au module plutôt qu'un renvoi vers la
+    # section logs de la phase 2, qui n'existe pas encore.
+    channel_id: "1537840906936258642"
+
+  retention:
+    # Historique des tentatives et des vérifications. L'état des membres et les
+    # blocages ne sont jamais purgés : un blocage qui se lèverait tout seul
+    # viderait le mécanisme de son sens.
+    history_days: 90

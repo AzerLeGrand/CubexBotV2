@@ -24,6 +24,80 @@ commands:
       Cette commande dépend d'un salon ou d'un rôle que le bot n'a pas trouvé au
       démarrage. Un membre de l'équipe technique a été prévenu.
 
+verification:
+  welcome:
+    title: "Bienvenue sur Cubex"
+    description: >-
+      L'accès au serveur demande une courte vérification, destinée à écarter les
+      comptes automatisés. Cliquez sur « Se vérifier » : une image contenant un
+      code s'affichera, visible de vous seul.
+  buttons:
+    # Libellés des deux boutons du message d'accueil. Courts : Discord les
+    # affiche sur une seule ligne.
+    start: "Se vérifier"
+    enter_code: "Entrer le code"
+  challenge:
+    title: "Recopiez le code"
+    description: >-
+      Le code figure sur l'image ci-dessous. Cliquez sur « Entrer le code » pour
+      le saisir. La casse et les espaces n'ont pas d'importance. Le code reste
+      valable {minutes} minutes ; passé ce délai, vous pourrez en demander un
+      nouveau.
+  modal:
+    title: "Vérification"
+    field_label: "Code affiché sur l'image"
+    placeholder: "Les caractères, dans l'ordre"
+  success:
+    title: "Vérification réussie"
+    description: >-
+      Votre accès au serveur est ouvert. Bonne visite, et bon jeu sur
+      fr.cubex.club.
+  expired:
+    title: "Code expiré"
+    description: >-
+      Ce code n'est plus valable. Cliquez de nouveau sur « Se vérifier » pour en
+      obtenir un autre. Cette tentative n'a pas été décomptée.
+  wrong_code:
+    title: "Code incorrect"
+    # Le ton compte : la plupart des échecs viennent d'une image mal lue, pas
+    # d'une fraude. Le texte ne suppose rien de l'intention du membre.
+    description: >-
+      Le code saisi ne correspond pas à celui de l'image. Il vous reste
+      {remaining} tentative(s). Vous pouvez demander une nouvelle image si
+      celle-ci est difficile à lire.
+  blocked:
+    title: "Vérification bloquée"
+    description: >-
+      Le nombre de tentatives autorisées est atteint et votre vérification est
+      bloquée. Contactez un membre de l'équipe : le déblocage est immédiat et ne
+      demande aucune justification.
+  already_verified:
+    title: "Vous êtes déjà vérifié"
+    description: "Votre accès au serveur est ouvert, il n'y a rien à faire."
+  role_failed:
+    title: "Vérification impossible pour le moment"
+    # N'accuse ni le membre ni ne promet de délai : le bot ne sait pas quand
+    # quelqu'un corrigera la configuration du serveur.
+    description: >-
+      Votre code était correct, mais le rôle d'accès n'a pas pu vous être
+      attribué. L'équipe technique vient d'être prévenue. Réessayez dans un
+      moment, ou contactez l'équipe si le problème persiste.
+  alerts:
+    exhausted:
+      title: "Tentatives de vérification épuisées"
+      description: >-
+        {role} — le membre {member} a épuisé ses tentatives de vérification et
+        se trouve bloqué. Il peut s'agir d'un compte automatisé comme d'un
+        membre en difficulté de lecture.
+    role_failure:
+      title: "Attribution du rôle impossible"
+      description: >-
+        {role} — le rôle de vérification n'a pas pu être attribué à {member}.
+        Vérifiez que le rôle du bot est placé au-dessus du rôle attribué dans la
+        hiérarchie, que la permission de gestion des rôles est accordée, et que
+        le rôle configuré existe toujours. Aucun membre ne peut entrer sur le
+        serveur tant que cette panne dure.
+
 components:
   expired:
     title: "Action expirée"

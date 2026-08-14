@@ -1,7 +1,6 @@
 import { z } from 'zod';
 
-import { isAbsolutePath } from '../../../utils/paths.js';
-import { allowedRoles, duration, snowflake } from './primitives.js';
+import { allowedRoles, duration, relativePath, snowflake } from './primitives.js';
 
 /**
  * Sections de `config.yml` que le noyau valide et consomme.
@@ -15,29 +14,6 @@ import { allowedRoles, duration, snowflake } from './primitives.js';
 // ---------------------------------------------------------------------------
 // Types locaux au noyau
 // ---------------------------------------------------------------------------
-
-const BAD_PATH =
-  "chemin relatif à la racine du projet attendu — un chemin absolu ne survivrait pas au passage " +
-  'du poste de développement au VPS';
-
-const BAD_SEPARATOR =
-  'séparateur de chemin non portable : utiliser / plutôt que \\, Node l\'accepte sur les deux ' +
-  'plateformes alors qu\'un antislash devient un caractère ordinaire du nom de fichier sous Linux';
-
-/**
- * Chemin de fichier ou de dossier, résolu depuis la racine par `fromRoot()`.
- *
- * `config.yml` est versionné et partagé entre le poste Windows et le VPS
- * Debian : la même valeur doit être jugée de la même façon des deux côtés. La
- * détection d'un chemin absolu couvre donc les deux conventions, et le
- * séparateur est imposé — voir `isAbsolutePath()`.
- */
-const relativePath = () =>
-  z
-    .string({ error: BAD_PATH })
-    .min(1, BAD_PATH)
-    .refine((value) => !isAbsolutePath(value), { error: BAD_PATH })
-    .refine((value) => !value.includes('\\'), { error: BAD_SEPARATOR });
 
 const BAD_TIMEZONE =
   'fuseau horaire IANA inconnu — attendu par exemple Europe/Paris';

@@ -97,7 +97,8 @@ commande, et son identifiant persistant vient d'`encodeCustomId()`.
 Il peut poser à côté un `manifest.js` facultatif, qui déclare `schema` — le
 fragment de `config.yml` qui lui appartient, validé au même titre que le noyau —
 et `intents`. Il est lu avant la configuration : il déclare, il ne fait rien
-d'autre.
+d'autre. Seul import du noyau autorisé, les primitives de schéma — un identifiant
+Discord passe par `snowflake()`, jamais par un `z.string()` nu.
 
 ## Spécifications
 

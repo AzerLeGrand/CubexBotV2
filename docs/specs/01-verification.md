@@ -31,8 +31,12 @@ une implémentation `image` (livrée) et une implémentation `web` (prévue, non
 ```yaml
 verification:
   challenge:
-    type: image        # image | web
+    type: image        # image (web prévu, non écrit)
 ```
+
+Le schéma du module ne déclare que `image` tant que l'implémentation `web`
+n'existe pas : accepter une valeur dont rien ne répond ferait démarrer un bot
+qui ne vérifierait personne, sans qu'aucun message ne le signale.
 
 ---
 
@@ -298,7 +302,7 @@ Sans cette commande, un membre bloqué le resterait définitivement, le seul rec
 
 | Événement | Destination |
 |-----------|-------------|
-| Vérification réussie | salon de journalisation des arrivées — **clé à trancher, voir §11.1** |
+| Vérification réussie | salon de journalisation des arrivées — **clé à trancher, voir §12.1** |
 | Échec de saisie | base uniquement |
 | Épuisement des tentatives | mention du rôle configuré dans le salon d'alerte |
 | Échec d'attribution du rôle | mention du rôle d'administration dans le salon d'alerte |
@@ -371,7 +375,7 @@ critique, elle désactive le module entier.
 | `verification.alert.channel_id` | non | les deux alertes se taisent, la vérification continue |
 | `verification.alert.exhausted_role_id` | non | l'alerte d'épuisement se tait |
 | `verification.alert.failure_role_id` | non | l'alerte technique se tait |
-| salon de journalisation (§11.1) | non | la journalisation Discord se tait, la base continue |
+| salon de journalisation (§12.1) | non | la journalisation Discord se tait, la base continue |
 
 Un salon d'alerte supprimé ne doit pas empêcher les membres d'entrer sur le
 serveur. C'est la raison d'être de la distinction entre capacité critique et
@@ -390,7 +394,7 @@ verification:
   member_role_id: "1381766005604352130"
 
   challenge:
-    type: image
+    type: image        # image (web prévu, non écrit)
     code_length: 6
     ttl_seconds: 300
     alphabet: "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
