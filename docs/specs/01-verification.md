@@ -332,9 +332,29 @@ Schéma indicatif, à préciser à l'implémentation.
 
 | Table | Contenu | Purge | Effacement |
 |-------|---------|-------|------------|
-| `verification_state` | identifiant du membre (clé), tentatives, statut de blocage, date de blocage | jamais | `delete` |
-| `verification_history` | identifiant du membre, type d'événement, horodatage | 90 jours | `delete` |
+| `verification_state` | identifiant du membre (clé), tentatives, statut de blocage, date de blocage | jamais | `delete` sur `user_id` |
+| `verification_history` | identifiant du membre, type d'événement, auteur de l'action, horodatage | 90 jours | `delete` sur `user_id`, `anonymize` sur `actor_id` |
 | `verification_message` | identifiant du salon, identifiant du message d'accueil | jamais | — |
+
+### Pourquoi `actor_id` s'anonymise au lieu d'être supprimé
+
+`verification_history.actor_id` porte l'identifiant du membre du **staff** qui a
+levé un blocage. C'est une donnée personnelle : elle doit disparaître si ce
+modérateur demande l'effacement.
+
+Mais `delete` sur cette colonne supprimerait **les lignes d'historique d'autres
+membres** — celles où ce modérateur est intervenu. On effacerait les données de
+gens qui n'ont rien demandé, en réponse à la demande d'un tiers.
+
+D'où trois déclarations pour deux tables, et la première fois du projet que deux
+stratégies coexistent sur une même table. C'est ce qui justifie que le registre
+du socle distingue par **colonne** et non par table : le critère est de savoir
+qui est le sujet de la ligne. La colonne qui porte le sujet se supprime, celle
+qui porte un tiers s'anonymise.
+
+`anonymize` y est possible parce qu'`actor_id` ne porte aucune contrainte
+d'unicité — contrairement à `verification_state.user_id`, clé primaire, que le
+garde-fou du socle 0.2 refuse.
 
 ### Pourquoi `delete` et non `anonymize`
 

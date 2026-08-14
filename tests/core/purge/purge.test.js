@@ -101,6 +101,56 @@ describe('register', () => {
       /retention_key/,
     );
   });
+
+  test('juge les identifiants et la clé avant d\'inspecter la table', (t) => {
+    const { registry } = sandbox(t);
+
+    // `t` n'existe pas : sans cet ordre, le refus parlerait de table absente
+    // pour une déclaration dont le vrai défaut est ailleurs.
+    assert.throws(
+      () => registry.register('x', [{ table: 't', date_column: 'created_at' }]),
+      /retention_key/,
+    );
+  });
+
+  test('refuse une table ou une colonne inexistante', (t) => {
+    const { registry } = sandbox(t);
+
+    // Symétrique du registre d'effacement. Sans ce contrôle, une faute de
+    // frappe ne se manifesterait que par une ligne de journal à 4 h du matin,
+    // et une table jamais purgée passerait des mois inaperçue.
+    assert.throws(
+      () =>
+        registry.register('logs', [
+          { table: 'absente', date_column: 'created_at', retention_key: 'logs.retention.structural_days' },
+        ]),
+      /la table absente n'existe pas/,
+    );
+
+    assert.throws(
+      () =>
+        registry.register('logs', [
+          { table: 'log_events', date_column: 'cree_le', retention_key: 'logs.retention.structural_days' },
+        ]),
+      /la colonne cree_le n'existe pas dans log_events/,
+    );
+  });
+
+  test('porte un code filtrable, comme les autres registres', (t) => {
+    const { registry } = sandbox(t);
+
+    try {
+      registry.register('logs', [
+        { table: 'absente', date_column: 'created_at', retention_key: 'logs.retention.structural_days' },
+      ]);
+      assert.fail('la déclaration aurait dû être refusée');
+    } catch (error) {
+      assert.ok(error instanceof Error, 'les assertions par message continuent de matcher');
+      assert.equal(error.code, 'purge_invalid');
+      assert.equal(error.expected, false);
+      assert.equal(error.context.owner, 'logs');
+    }
+  });
 });
 
 describe('run', () => {
@@ -143,18 +193,25 @@ describe('run', () => {
   });
 
   test('une erreur sur une table n\'interrompt pas les autres', (t) => {
-    const { registry, logger, insert, count } = sandbox(t);
+    const { database, registry, logger, insert, count } = sandbox(t);
+
+    database.exec('CREATE TABLE log_fantome (id INTEGER PRIMARY KEY, created_at TEXT NOT NULL)');
 
     registry.register('fantome', [
-      { table: 'table_absente', date_column: 'created_at', retention_key: 'logs.retention.structural_days' },
+      { table: 'log_fantome', date_column: 'created_at', retention_key: 'logs.retention.structural_days' },
     ]);
     inscrire(registry);
+
+    // La table disparaît APRÈS l'inscription : le registre refuse désormais une
+    // table absente au moment de déclarer. Une table retirée par une migration
+    // ultérieure est de toute façon plus proche du réel.
+    database.exec('DROP TABLE log_fantome');
 
     insert('log_events', daysAgo(100));
 
     const report = registry.run();
 
-    assert.match(report[0].error, /table_absente/);
+    assert.match(report[0].error, /log_fantome/);
     assert.equal(report[1].deleted, 1, 'la table suivante a bien été traitée');
     assert.equal(count('log_events'), 0);
     assert.match(logger.of('error')[0].message, /purge impossible/);

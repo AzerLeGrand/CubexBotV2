@@ -4,13 +4,63 @@
  * Contrôle d'accès à l'entrée du serveur : un nouveau membre n'accède au reste
  * du serveur qu'après avoir résolu un captcha.
  *
- * Ce lot ne déclare que l'existence du module et ses références Discord. Les
- * tables, le captcha, les boutons et la commande de déblocage arrivent aux lots
- * suivants. Aucun `init` : le chargeur du noyau n'en attend pas d'un module qui
- * n'a rien à monter, et en écrire un vide pour la forme n'apprendrait rien.
+ * Le module déclare ses tables, ses références Discord et ce qu'il confie aux
+ * registres de purge et d'effacement. Le captcha, les boutons et la commande de
+ * déblocage arrivent aux lots suivants — rien n'écrit encore dans ces tables.
+ *
+ * Aucun `init` : le chargeur du noyau n'en attend pas d'un module qui n'a rien
+ * à monter, et en écrire un vide pour la forme n'apprendrait rien.
  */
 
 export const name = 'verification';
+
+/**
+ * Migrations du module, numérotées pour lui seul : `verification/001` et
+ * `core/001` coexistent sans se gêner, la table de suivi les distingue par leur
+ * propriétaire.
+ */
+export const migrations = './migrations';
+
+/**
+ * Rétention (spec section 7).
+ *
+ * L'historique seul est purgé. `verification_state` ne l'est jamais — un
+ * blocage supprimé automatiquement se lèverait tout seul, ce qui viderait le
+ * mécanisme de son sens — et `verification_message` non plus, une ligne par
+ * salon ne pesant rien.
+ */
+export const retention = [
+  {
+    table: 'verification_history',
+    date_column: 'created_at',
+    retention_key: 'verification.retention.history_days',
+  },
+];
+
+/**
+ * Droit à l'effacement (spec section 8).
+ *
+ * Trois déclarations pour deux tables, et c'est la première fois du projet que
+ * deux stratégies coexistent sur une même table. C'est ce qui justifie que le
+ * registre distingue par COLONNE et non par table.
+ *
+ * `user_id` disparaît : ce sont les données du membre qui demande l'effacement.
+ *
+ * `actor_id` est ANONYMISÉ, jamais supprimé. Il porte l'identifiant du membre
+ * du staff qui a débloqué quelqu'un — donnée personnelle, qui doit donc partir
+ * si ce modérateur le demande. Mais `delete` sur cette colonne supprimerait les
+ * lignes d'historique D'AUTRES MEMBRES, celles où ce modérateur est intervenu :
+ * on effacerait les données de gens qui n'ont rien demandé. `anonymize` est la
+ * seule stratégie correcte ici, et elle passe le garde-fou du socle 0.2 puisque
+ * `actor_id` ne porte aucune contrainte d'unicité — contrairement à
+ * `verification_state.user_id`, qui est clé primaire et que le garde-fou
+ * refuserait.
+ */
+export const erasure = [
+  { table: 'verification_state', user_column: 'user_id', strategy: 'delete' },
+  { table: 'verification_history', user_column: 'user_id', strategy: 'delete' },
+  { table: 'verification_history', user_column: 'actor_id', strategy: 'anonymize' },
+];
 
 /**
  * Capacités et références Discord dont elles dépendent (spec §9).

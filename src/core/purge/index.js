@@ -1,3 +1,6 @@
+import { findColumn, tableColumns } from '../database/schema-info.js';
+import { AppError } from '../errors/app-error.js';
+
 /**
  * Registre de purge (socle §10).
  *
@@ -99,6 +102,10 @@ export function createPurgeRegistry({ database, config, logger, shutdown = null 
   /**
    * Inscrit les déclarations d'un module.
    *
+   * L'ordre des contrôles compte : identifiants SQL, puis clé de rétention,
+   * puis inspection de la table. Inspecter d'abord ferait répondre « table
+   * absente » à une déclaration dont le vrai défaut est ailleurs.
+   *
    * @param {string} owner nom du module, pour le compte rendu
    * @param {{ table: string, date_column: string, retention_key: string }[]} declarations
    */
@@ -106,20 +113,52 @@ export function createPurgeRegistry({ database, config, logger, shutdown = null 
     for (const declaration of declarations) {
       const { table, date_column: dateColumn, retention_key: retentionKey } = declaration;
 
+      const fault = (message) => {
+        throw new AppError(`déclaration de purge invalide pour ${owner} : ${message}`, {
+          code: 'purge_invalid',
+          context: { owner, table, column: dateColumn, retention_key: retentionKey },
+          expected: false,
+        });
+      };
+
       for (const [field, value] of [['table', table], ['date_column', dateColumn]]) {
         if (typeof value !== 'string' || !IDENTIFIER.test(value)) {
-          throw new Error(
-            `déclaration de purge invalide pour ${owner} : ${field} attend un identifiant SQL ` +
-              `simple, reçu ${JSON.stringify(value)}`,
-          );
+          fault(`${field} attend un identifiant SQL simple, reçu ${JSON.stringify(value)}`);
         }
       }
 
       if (typeof retentionKey !== 'string' || retentionKey.length === 0) {
-        throw new Error(`déclaration de purge invalide pour ${owner} : retention_key manquante`);
+        fault('retention_key manquante');
       }
 
+      inspect(table, dateColumn, fault);
+
       entries.push({ owner, table, dateColumn, retentionKey });
+    }
+  }
+
+  /**
+   * Vérifie que la table et sa colonne d'horodatage existent.
+   *
+   * Symétrique du contrôle du registre d'effacement, et pour un mode de
+   * défaillance pire : une faute de frappe sur `date_column` ne bloque rien, ne
+   * purge rien, et ne laisse qu'une ligne dans un fichier JSON à quatre heures
+   * du matin. Une table qu'on croit purgée depuis six mois et qui ne l'a jamais
+   * été ne se découvre qu'en cherchant autre chose.
+   *
+   * Aucune recherche d'unicité ici, contrairement à l'effacement : elle n'a de
+   * sens que pour `anonymize`.
+   *
+   * L'inspection est possible parce que les migrations s'appliquent avant
+   * l'inscription des modules — étape 3 pour les unes, étape 5 pour l'autre.
+   */
+  function inspect(table, dateColumn, fault) {
+    const columns = tableColumns(database, table);
+
+    if (columns.length === 0) fault(`la table ${table} n'existe pas`);
+
+    if (findColumn(columns, dateColumn) === undefined) {
+      fault(`la colonne ${dateColumn} n'existe pas dans ${table}`);
     }
   }
 

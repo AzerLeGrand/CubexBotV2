@@ -130,6 +130,28 @@ Elles sont interpolées dans la requête — SQLite ne les accepte pas en param�
 lié — et viennent du code des modules, mais la porte se ferme au registre plutôt
 que de compter sur la discipline des appelants.
 
+### La table et la colonne doivent exister
+
+Les deux registres **inspectent la table à l'inscription** et refusent le
+démarrage si elle ou la colonne déclarée est absente. La lecture du schéma est
+partagée par `src/core/database/schema-info.js` : deux implémentations
+divergeraient, et un module verrait sa déclaration acceptée par un registre et
+refusée par l'autre.
+
+Le mode de défaillance que cela ferme est plus sournois côté purge que côté
+effacement. Une faute de frappe sur `date_column` ne bloque rien et ne purge
+rien : le seul signe est une ligne dans un fichier JSON à quatre heures du
+matin. Une table qu'on croit purgée depuis six mois et qui ne l'a jamais été ne
+se découvre qu'en cherchant autre chose.
+
+## Nommage des index
+
+`idx_<table>_<colonne>` — `idx_verification_history_created_at`.
+
+Un index sert soit une recherche du module, soit la purge, qui balaie par date.
+Les deux se nomment de la même façon : c'est la colonne qui dit à quoi il sert,
+pas un suffixe.
+
 ## Exclusions de purge
 
 Ces données ne sont jamais purgées automatiquement :
@@ -159,6 +181,25 @@ demande viderait la mémoire de modération. Elles s'anonymisent — l'identifia
 remplacé, la ligne subsiste.
 
 Même validation d'identifiants SQL que pour la purge.
+
+### Une déclaration par COLONNE, pas par table
+
+Une même table peut porter deux déclarations de stratégies différentes, et le
+premier cas du projet est `verification_history` :
+
+```js
+{ table: 'verification_history', user_column: 'user_id',  strategy: 'delete' },
+{ table: 'verification_history', user_column: 'actor_id', strategy: 'anonymize' }
+```
+
+`actor_id` porte l'identifiant du membre du staff qui a levé un blocage. C'est
+une donnée personnelle, elle doit donc partir si ce modérateur demande
+l'effacement — mais `delete` supprimerait **les lignes d'historique d'autres
+membres**, celles où ce modérateur est intervenu. On effacerait les données de
+gens qui n'ont rien demandé.
+
+Le critère est donc : qui est le sujet de la ligne. La colonne qui porte le
+sujet se supprime, celle qui porte un tiers s'anonymise.
 
 ### `anonymize` est interdit sur une colonne unique
 

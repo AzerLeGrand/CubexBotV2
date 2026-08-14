@@ -1,3 +1,4 @@
+import { findColumn, tableColumns } from '../database/schema-info.js';
 import { AppError } from '../errors/app-error.js';
 
 /**
@@ -90,7 +91,7 @@ export function createErasureRegistry({ database, logger }) {
    * pour la seconde. Les tables existent quand on arrive ici.
    */
   function inspect(table, userColumn, strategy, fault) {
-    const columns = database.prepare(`PRAGMA table_info(${table})`).all();
+    const columns = tableColumns(database, table);
 
     // Une table absente rend une liste vide plutôt que de lever. Sans ce
     // contrôle, l'anomalie ne sortirait qu'au premier effacement réel, sous la
@@ -98,12 +99,7 @@ export function createErasureRegistry({ database, logger }) {
     // tables des autres modules comprises.
     if (columns.length === 0) fault(`la table ${table} n'existe pas`);
 
-    // Le nom déclaré est déjà minuscule, IDENTIFIER s'en charge ; seule la
-    // sortie du PRAGMA a besoin d'être repliée, SQLite rendant la colonne avec
-    // la casse de sa déclaration DDL alors que ses identifiants y sont
-    // insensibles. `toLowerCase()` et non `toLocaleLowerCase()`, qui dépend de
-    // la locale du processus.
-    const column = columns.find((held) => held.name.toLowerCase() === userColumn);
+    const column = findColumn(columns, userColumn);
 
     if (column === undefined) fault(`la colonne ${userColumn} n'existe pas dans ${table}`);
 

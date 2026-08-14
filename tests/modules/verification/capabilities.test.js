@@ -165,11 +165,16 @@ describe('forme des déclarations', () => {
     assert.equal(new Set(alerts.map((alert) => alert.refs[1].path)).size, 2);
   });
 
-  test('le module ne déclare encore ni commande, ni composant, ni écouteur', async () => {
-    // Ce lot rend le module existant, il ne le fait pas agir.
+  test('le module déclare, il n\'agit pas encore', async () => {
     const module = await import('../../../src/modules/verification/index.js');
 
-    for (const field of ['commands', 'components', 'events', 'retention', 'erasure', 'init', 'ready']) {
+    // Déclaratif : des tables, ce qu'on en purge et ce qu'on en efface.
+    for (const field of ['migrations', 'retention', 'erasure', 'capabilities']) {
+      assert.notEqual(module[field], undefined, `${field} est déclaré`);
+    }
+
+    // Agissant : rien encore. Aucun code ne touche les tables.
+    for (const field of ['commands', 'components', 'events', 'init', 'ready']) {
       assert.equal(module[field], undefined, `${field} arrive à un lot ultérieur`);
     }
   });
