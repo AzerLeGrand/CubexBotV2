@@ -117,11 +117,12 @@ describe('toError', () => {
 
 describe('createShutdown', () => {
   /** Cible et journal factices : rien n'est posé sur le vrai process. */
-  const harness = ({ close, stepTimeoutMs } = {}) => {
+  const harness = ({ close, stepTimeoutMs, diagnostic, stderr } = {}) => {
     const target = new EventEmitter();
     const entries = [];
     const exits = [];
     const ordre = [];
+    const diagnostics = [];
 
     const record = (level) => (message, context) => entries.push({ level, message, context });
 
@@ -143,11 +144,20 @@ describe('createShutdown', () => {
       target,
       exit: (code) => exits.push(code),
       stepTimeoutMs,
+      diagnostic,
+      // Rien n'est écrit sur le vrai stderr : la sortie est retenue, et son
+      // ordre par rapport aux étapes de fermeture est observable.
+      stderr:
+        stderr ??
+        ((text) => {
+          ordre.push('stderr');
+          diagnostics.push(text);
+        }),
     });
 
     const uninstall = shutdown.install();
 
-    return { target, entries, exits, ordre, uninstall, shutdown, logger };
+    return { target, entries, exits, ordre, diagnostics, uninstall, shutdown, logger };
   };
 
   const of = (entries, level) => entries.filter((entry) => entry.level === level);
@@ -202,6 +212,111 @@ describe('createShutdown', () => {
 
       assert.ok(of(entries, 'error')[0].context.error instanceof Error);
       assert.deepEqual(exits, [1]);
+    });
+  });
+
+  describe('diagnostic sur stderr', () => {
+    test('le chemin fatal écrit un résumé', async () => {
+      // Hors développement, le journal n'écrit qu'en fichier JSON : sans ce
+      // résumé, `pm2 logs` ne montrerait rien d'un processus qui sort en 1.
+      const { target, diagnostics } = harness();
+
+      target.emit('uncaughtException', new Error('effondrement'));
+      await wait(20);
+
+      assert.equal(diagnostics.length, 1);
+      assert.match(diagnostics[0], /uncaughtException/);
+      assert.match(diagnostics[0], /Error: effondrement/);
+      assert.match(diagnostics[0], /at /, 'la pile permet de diagnostiquer sans ouvrir un fichier');
+    });
+
+    test('un rejet non capturé est résumé de la même façon', async () => {
+      const { target, diagnostics } = harness();
+
+      target.emit('unhandledRejection', new Error('promesse abandonnée'));
+      await wait(20);
+
+      assert.match(diagnostics[0], /unhandledRejection/);
+      assert.match(diagnostics[0], /promesse abandonnée/);
+    });
+
+    test('un signal n\'écrit rien : c\'est un arrêt normal', async () => {
+      const { target, diagnostics } = harness();
+
+      target.emit('SIGTERM');
+      await wait(20);
+
+      assert.deepEqual(diagnostics, []);
+    });
+
+    test('le résumé part AVANT la première étape de fermeture', async () => {
+      const { target, ordre, shutdown } = harness();
+
+      shutdown.register('database', () => ordre.push('database'));
+      target.emit('uncaughtException', new Error('effondrement'));
+      await wait(20);
+
+      // Une étape bloquée retarde de plusieurs secondes, et le drain peut ne
+      // jamais aboutir : le diagnostic ne doit dépendre d'aucun transport.
+      assert.deepEqual(ordre, ['stderr', 'database', 'logging']);
+    });
+
+    test('porte la cause, que le journal ne sérialise pas', async () => {
+      const { target, diagnostics } = harness();
+      const error = new Error('connexion refusée', { cause: new TypeError('jeton absent') });
+
+      target.emit('uncaughtException', error);
+      await wait(20);
+
+      assert.match(diagnostics[0], /cause : TypeError: jeton absent/);
+    });
+
+    test('console déjà branchée : aucun doublon', async () => {
+      // La condition est tranchée par l'appelant et injectée : handler.js ne
+      // lit pas l'environnement.
+      const { target, diagnostics, exits } = harness({ diagnostic: false });
+
+      target.emit('uncaughtException', new Error('effondrement'));
+      await wait(20);
+
+      assert.deepEqual(diagnostics, []);
+      assert.deepEqual(exits, [1], 'la séquence se déroule quand même');
+    });
+
+    test('une écriture qui lève ne fait pas échouer l\'arrêt', async () => {
+      const { target, ordre, exits } = harness({
+        stderr: () => {
+          throw new Error('descripteur ferme');
+        },
+      });
+
+      target.emit('uncaughtException', new Error('effondrement'));
+      await wait(20);
+
+      assert.deepEqual(ordre, ['logging'], 'la fermeture se déroule');
+      assert.deepEqual(exits, [1]);
+    });
+
+    test('une seconde secousse ne produit pas un second résumé', async () => {
+      const { target, diagnostics } = harness();
+
+      target.emit('uncaughtException', new Error('premier'));
+      target.emit('uncaughtException', new Error('second'));
+      await wait(20);
+
+      // La séquence ne se relance pas ; le résumé non plus, sans quoi le
+      // premier motif -- le vrai -- serait noyé.
+      assert.equal(diagnostics.length, 1);
+      assert.match(diagnostics[0], /premier/);
+    });
+
+    test('tient sans contexte, run() étant appelable directement', async () => {
+      const { shutdown, diagnostics } = harness();
+
+      await shutdown.run({ reason: 'appel direct', code: 1, level: 'error' });
+
+      assert.equal(diagnostics.length, 1);
+      assert.match(diagnostics[0], /appel direct/);
     });
   });
 

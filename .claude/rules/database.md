@@ -160,6 +160,39 @@ remplacé, la ligne subsiste.
 
 Même validation d'identifiants SQL que pour la purge.
 
+### `anonymize` est interdit sur une colonne unique
+
+**Une colonne portant une contrainte d'unicité — clé primaire comprise,
+composite comprise — ne peut pas être anonymisée.** Le registre inspecte la
+table à l'inscription et refuse le démarrage.
+
+La raison tient à ce que fait la stratégie : elle écrit la même valeur de
+remplacement sur chaque ligne effacée. Le premier effacement passe ; le
+**deuxième** heurte la ligne déjà anonymisée. L'exception remonte, et
+l'effacement étant atomique, elle annule toute la transaction — y compris les
+tables des autres modules. Le défaut ne se manifeste donc qu'au deuxième
+effacement réel, en production, et il fait échouer tous les suivants.
+
+Une clé composite ne protège pas : `PRIMARY KEY (user_id, guild_id)` collisionne
+dès que deux membres du même serveur sont effacés.
+
+| Table | Stratégie |
+|-------|-----------|
+| Table d'historique, plusieurs lignes par membre, colonne membre libre | `anonymize` possible |
+| Table d'état, une ligne par membre, colonne membre en clé | `delete`, sans alternative |
+
+`anonymize` a été pensée pour `sanctions`, où rien n'est unique par membre. Elle
+ne transpose pas à une table d'état : `verification_state` de la phase 1 utilise
+`delete`.
+
+**Conséquence à la conception du schéma :** si une donnée doit survivre à
+l'effacement de son porteur, sa table ne peut pas avoir la colonne membre pour
+clé. Cela se décide en écrivant la migration, pas au démarrage.
+
+Le registre contrôle aussi que la table et la colonne **existent** : une
+déclaration sur une table absente échouerait autrement au premier effacement,
+avec un `no such table` qui annulerait la transaction entière.
+
 ## Droit à l'effacement
 
 L'architecture doit permettre de retrouver et supprimer toutes les données d'un

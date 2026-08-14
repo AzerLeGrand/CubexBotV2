@@ -18,6 +18,8 @@ phase 1 réclame et que la phase 0 n'avait aucune raison d'écrire.
 | 13 août 2026 | 0.2 — lot 1 | §12 | intents déclarés par manifeste, union dédupliquée avec le `Guilds` du noyau, nom inconnu refusé |
 | 14 août 2026 | 0.2 — lot 2 | §4 | `events` câblés par le noyau sous enveloppe, `clientReady` réservé, nouvel export `ready(ctx)` |
 | 14 août 2026 | 0.2 — lot 3 | §4 | `components` : boutons, menus et modales routés par identifiant persistant, permission déclarée explicitement |
+| 14 août 2026 | 0.2 — lot 4 | §10 | `anonymize` refusée sur une colonne unique, table et colonne inspectées à l'inscription |
+| 14 août 2026 | 0.2 — lot 4 | §3 | résumé de défaillance sur stderr, la séquence d'arrêt ne dépendant plus du drain des journaux pour dire pourquoi le bot est mort |
 
 ---
 
@@ -747,6 +749,18 @@ remplacé, la sanction subsiste.
 Ce registre doit exister **avant que le premier module déclare quoi que ce soit**,
 faute de quoi chaque phase écrira sa propre logique. La commande slash qui
 l'expose peut venir plus tard ; le registre, non.
+
+**`anonymize` est refusée sur une colonne portant une contrainte d'unicité**,
+clé primaire et clé composite comprises. La stratégie écrit la même valeur de
+remplacement sur chaque ligne : le deuxième effacement heurterait la ligne déjà
+anonymisée, et l'effacement étant atomique, l'exception annulerait toute la
+transaction — les tables des autres modules comprises. Le défaut ne se
+manifesterait qu'au deuxième effacement réel, en production.
+
+La table est donc inspectée à l'inscription, et son absence comme celle de la
+colonne arrête le démarrage. Une table d'état dont la colonne membre est la clé
+utilise `delete` ; `anonymize` suppose plusieurs lignes par membre, ce que les
+sanctions garantissent.
 
 ---
 

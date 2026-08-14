@@ -48,12 +48,19 @@ const EXIT_FAILURE = 1;
  * @param {(code: number) => void} [options.exit]
  * @param {NodeJS.EventEmitter} [options.target] cible des écouteurs, `process` par défaut
  * @param {number} [options.stepTimeoutMs]     plafond par défaut de chaque étape
+ * @param {boolean} [options.diagnostic]       écrire le résumé fatal, voir `diagnose()`
+ * @param {(text: string) => void} [options.stderr] destination de ce résumé
  */
 export function createShutdown({
   logger,
   exit = (code) => process.exit(code),
   target = process,
   stepTimeoutMs = DEFAULT_STEP_TIMEOUT_MS,
+  diagnostic = true,
+  // Enveloppée, et non passée par référence : `process.stderr.write` détachée
+  // de son objet perd son `this` et lève au premier appel — au pire moment
+  // possible, puisque c'est le traitement d'une défaillance.
+  stderr = (text) => process.stderr.write(text),
 }) {
   /**
    * Le drain des journaux est inscrit d'office, en premier — donc exécuté en
@@ -95,6 +102,12 @@ export function createShutdown({
     if (running) return;
     running = true;
 
+    // Après la garde de réentrance, sinon une seconde secousse pendant la
+    // fermeture produirait un second résumé alors que la séquence, elle, ne se
+    // relance pas. Avant l'entrée de journal, et donc avant toute la séquence :
+    // c'est ce qui rend le diagnostic indépendant du drain.
+    if (code === EXIT_FAILURE) diagnose(reason, context);
+
     logger[level](`arrêt du bot : ${reason}`, context);
 
     for (const step of [...steps].reverse()) {
@@ -108,6 +121,56 @@ export function createShutdown({
     }
 
     exit(code);
+  }
+
+  /**
+   * Résumé de la défaillance sur stderr, sur le seul chemin d'échec.
+   *
+   * Hors développement, la journalisation n'écrit qu'en fichier JSON : sous pm2,
+   * `pm2 logs` ne montre RIEN d'un processus qui sort en 1, et l'opérateur doit
+   * savoir qu'il faut aller ouvrir `logs/cubex-AAAA-MM-JJ.log`. Les trois
+   * blocages de démarrage — secrets manquants, configuration invalide,
+   * manifeste illisible — passent déjà par stderr ; celui-ci manquait, alors
+   * qu'il couvre le cas d'un module mal déclaré, refusé APRÈS la création du
+   * logger.
+   *
+   * Surtout, le diagnostic journalisé dépend du drain de la journalisation :
+   * disque plein, transport bloqué, et l'entrée qui explique la mort du bot est
+   * précisément celle qui ne s'écrira pas. Celui-ci ne dépend d'aucun
+   * transport et part avant la séquence de fermeture, dont une étape bloquée
+   * peut retarder de plusieurs secondes.
+   *
+   * Un signal n'écrit rien : c'est un arrêt normal, et le journal suffit.
+   */
+  function diagnose(reason, context) {
+    // La condition « la console porte déjà les entrées » est tranchée par
+    // l'appelant et injectée. Ce fichier n'importe aucune bibliothèque de
+    // journalisation et ne lit pas l'environnement : la lui faire déduire d'un
+    // champ du logger l'obligerait à en connaître la forme au-delà de ses
+    // quatre niveaux, et chaque logger factice devrait la mimer.
+    if (!diagnostic) return;
+
+    try {
+      const error = context?.error;
+
+      // `stack` commence déjà par « Nom: message » : l'ajouter serait redondant.
+      const lines = [
+        `arrêt du bot : ${reason}`,
+        error?.stack ?? String(error?.message ?? error ?? 'aucune erreur fournie'),
+      ];
+
+      // La cause porte l'erreur d'origine — celle de `login()`, par exemple, que
+      // le journal ne sérialise pas. Nom et message suffisent : la pile utile
+      // est celle du dessus.
+      const cause = error?.cause;
+
+      if (cause) lines.push(`cause : ${cause.name ? `${cause.name}: ` : ''}${cause.message ?? cause}`);
+
+      stderr(`${lines.join('\n')}\n`);
+    } catch {
+      // Un descripteur fermé ne doit pas faire échouer le traitement de
+      // l'erreur : ce serait lever une seconde fois au pire endroit.
+    }
   }
 
   /**

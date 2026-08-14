@@ -103,19 +103,26 @@ export async function bootstrap() {
   // ---------------------------------------------------------------------
   // 2. Journalisation, puis injection dans ce qui a déjà parlé
   // ---------------------------------------------------------------------
+  // Seule occurrence de la condition dans le projet : elle règle à la fois le
+  // doublement des entrées sur la console et le résumé fatal de la séquence
+  // d'arrêt, qui ne doit pas répéter ce que la console montre déjà.
+  const toConsole = env.NODE_ENV === 'development';
+
   const logger = createLogger({
     level: config.get('logging.level'),
     directory: fromRoot(config.get('logging.directory')),
     filePrefix: config.get('logging.file_prefix'),
     retentionDays: config.get('logging.retention_days'),
     timezone: config.get('bot.timezone'),
-    console: env.NODE_ENV === 'development',
+    console: toConsole,
   });
 
   // Rejoue ce que la configuration a dit avant que le logger n'existe.
   config.setLogger(logger.forModule('config'));
 
-  const shutdown = createShutdown({ logger });
+  // En production le journal n'écrit qu'en fichier JSON : sans ce résumé, un
+  // arrêt sur défaillance ne laisserait rien dans `pm2 logs`.
+  const shutdown = createShutdown({ logger, diagnostic: !toConsole });
   const uninstall = shutdown.install();
 
   logger.info('démarrage', { env: env.NODE_ENV, node: process.version });

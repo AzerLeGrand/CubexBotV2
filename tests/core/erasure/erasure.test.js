@@ -89,6 +89,181 @@ describe('register', () => {
       );
     }
   });
+
+  test('juge la stratégie avant d\'inspecter la table', (t) => {
+    const { registry } = sandbox(t);
+
+    // `t` n'existe pas : sans cet ordre, le refus parlerait de table absente
+    // pour une déclaration dont le vrai défaut est ailleurs.
+    assert.throws(
+      () => registry.register('x', [{ table: 't', user_column: 'user_id', strategy: 'purge' }]),
+      /strategy attend/,
+    );
+  });
+
+  test('porte un code filtrable, comme les autres registres', (t) => {
+    const { registry } = sandbox(t);
+
+    try {
+      registry.register('x', [{ table: 'absente', user_column: 'user_id', strategy: 'delete' }]);
+      assert.fail('la déclaration aurait dû être refusée');
+    } catch (error) {
+      assert.ok(error instanceof Error, 'les assertions par message continuent de matcher');
+      assert.equal(error.code, 'erasure_invalid');
+      assert.equal(error.expected, false);
+      assert.equal(error.context.owner, 'x');
+    }
+  });
+});
+
+describe('inspection de la table à l\'inscription', () => {
+  /** Crée une table de la forme voulue et tente d'y déclarer un effacement. */
+  const surTable = (t, ddl, strategy = 'anonymize', column = 'user_id') => {
+    const { database, registry } = sandbox(t);
+
+    database.exec(ddl);
+
+    return () => registry.register('sonde', [{ table: 'sonde', user_column: column, strategy }]);
+  };
+
+  describe('existence', () => {
+    for (const strategy of ['delete', 'anonymize']) {
+      test(`table absente refusée en ${strategy}`, (t) => {
+        const { registry } = sandbox(t);
+
+        // Aujourd'hui, l'anomalie ne sortirait qu'au premier effacement réel,
+        // sous la forme d'un « no such table » qui annule toute la transaction.
+        assert.throws(
+          () => registry.register('x', [{ table: 'absente', user_column: 'user_id', strategy }]),
+          /la table absente n'existe pas/,
+        );
+      });
+
+      test(`colonne absente refusée en ${strategy}`, (t) => {
+        const declarer = surTable(
+          t,
+          'CREATE TABLE sonde (id INTEGER PRIMARY KEY, autre TEXT)',
+          strategy,
+        );
+
+        assert.throws(declarer, /la colonne user_id n'existe pas dans sonde/);
+      });
+    }
+
+    test('trouve la colonne quelle que soit la casse de sa déclaration DDL', (t) => {
+      // SQLite rend la colonne avec la casse du DDL, et ses identifiants sont
+      // insensibles à la casse : une comparaison stricte refuserait une table
+      // sur laquelle le SQL fonctionne parfaitement.
+      const declarer = surTable(t, 'CREATE TABLE sonde (id INTEGER PRIMARY KEY, User_Id TEXT)');
+
+      assert.doesNotThrow(declarer);
+    });
+  });
+
+  describe('anonymize refusé sur une colonne unique', () => {
+    const CAS = [
+      ['clé primaire simple', 'CREATE TABLE sonde (user_id TEXT PRIMARY KEY)', /la clé primaire/],
+      [
+        'INTEGER PRIMARY KEY, alias de rowid',
+        'CREATE TABLE sonde (user_id INTEGER PRIMARY KEY)',
+        /la clé primaire/,
+      ],
+      [
+        'clé primaire composite',
+        'CREATE TABLE sonde (user_id TEXT, guild_id TEXT, PRIMARY KEY (user_id, guild_id))',
+        /clé primaire composite \(user_id, guild_id\)/,
+      ],
+      [
+        'contrainte UNIQUE de colonne',
+        'CREATE TABLE sonde (id INTEGER PRIMARY KEY, user_id TEXT UNIQUE)',
+        /une contrainte UNIQUE/,
+      ],
+      [
+        'contrainte UNIQUE composite',
+        'CREATE TABLE sonde (id INTEGER PRIMARY KEY, autre TEXT, user_id TEXT, UNIQUE (autre, user_id))',
+        /contrainte UNIQUE composite \(autre, user_id\)/,
+      ],
+      [
+        'index unique explicite',
+        'CREATE TABLE sonde (id INTEGER PRIMARY KEY, user_id TEXT); CREATE UNIQUE INDEX ix ON sonde(user_id)',
+        /l'index unique « ix »/,
+      ],
+      [
+        'index unique partiel',
+        'CREATE TABLE sonde (id INTEGER PRIMARY KEY, user_id TEXT, actif INT); ' +
+          'CREATE UNIQUE INDEX ix ON sonde(user_id) WHERE actif = 1',
+        /partielle/,
+      ],
+      [
+        'WITHOUT ROWID, clé simple',
+        'CREATE TABLE sonde (user_id TEXT PRIMARY KEY, x TEXT) WITHOUT ROWID',
+        /la clé primaire/,
+      ],
+      [
+        'WITHOUT ROWID, clé composite',
+        'CREATE TABLE sonde (user_id TEXT, guild_id TEXT, PRIMARY KEY (user_id, guild_id)) WITHOUT ROWID',
+        /clé primaire composite/,
+      ],
+    ];
+
+    for (const [nom, ddl, motif] of CAS) {
+      test(nom, (t) => {
+        const declarer = surTable(t, ddl);
+
+        // Le deuxième effacement heurterait la ligne déjà anonymisée et
+        // annulerait toute la transaction, tables des autres modules comprises.
+        assert.throws(declarer, /anonymize est impossible/);
+        assert.throws(declarer, motif);
+        assert.throws(declarer, /strategy « delete »/);
+      });
+    }
+  });
+
+  describe('anonymize accepté quand rien ne contraint la colonne', () => {
+    test('colonne libre', (t) => {
+      assert.doesNotThrow(
+        surTable(t, 'CREATE TABLE sonde (id INTEGER PRIMARY KEY, user_id TEXT NOT NULL)'),
+      );
+    });
+
+    test('index NON unique', (t) => {
+      assert.doesNotThrow(
+        surTable(
+          t,
+          'CREATE TABLE sonde (id INTEGER PRIMARY KEY, user_id TEXT); CREATE INDEX ix ON sonde(user_id)',
+        ),
+      );
+    });
+
+    test('contrainte unique portant sur une AUTRE colonne', (t) => {
+      assert.doesNotThrow(
+        surTable(t, 'CREATE TABLE sonde (id INTEGER PRIMARY KEY, user_id TEXT, autre TEXT UNIQUE)'),
+      );
+    });
+
+    test('WITHOUT ROWID : une colonne hors clé reste libre', (t) => {
+      // Le piège d'index_xinfo, qui rend aussi les colonnes NON clés : les
+      // prendre pour des membres de la contrainte refuserait une table saine.
+      assert.doesNotThrow(
+        surTable(
+          t,
+          'CREATE TABLE sonde (cle TEXT PRIMARY KEY, user_id TEXT) WITHOUT ROWID',
+        ),
+      );
+    });
+  });
+
+  describe('delete n\'a pas ce problème', () => {
+    for (const [nom, ddl] of [
+      ['clé primaire', 'CREATE TABLE sonde (user_id TEXT PRIMARY KEY)'],
+      ['contrainte UNIQUE', 'CREATE TABLE sonde (id INTEGER PRIMARY KEY, user_id TEXT UNIQUE)'],
+    ]) {
+      test(nom, (t) => {
+        // Supprimer une ligne ne heurte aucune contrainte d'unicité.
+        assert.doesNotThrow(surTable(t, ddl, 'delete'));
+      });
+    }
+  });
 });
 
 describe('erase', () => {
@@ -138,14 +313,18 @@ describe('erase', () => {
   });
 
   test('annule tout quand une table échoue', (t) => {
-    const { registry, insert, rows, logger } = sandbox(t);
+    const { database, registry, insert, rows, logger } = sandbox(t);
 
     registry.register('verification', [DECLARATIONS[0]]);
-    registry.register('fantome', [
-      { table: 'table_absente', user_column: 'user_id', strategy: 'delete' },
-    ]);
+    registry.register('sanctions', [DECLARATIONS[1]]);
 
     insert('verification_history', MEMBRE);
+
+    // La table disparaît APRÈS l'inscription : le registre refuse désormais une
+    // table absente au moment de déclarer, et une migration qui retire une
+    // table est de toute façon plus proche du réel que la déclaration d'une
+    // table qui n'a jamais existé.
+    database.exec('DROP TABLE sanctions');
 
     // Contrairement à la purge, un effacement partiel est un effacement raté :
     // le signaler comme réussi laisserait des données que le membre croit
