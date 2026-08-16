@@ -130,5 +130,30 @@ export function createVerificationEngine({ config, challenge, store, repository 
     return { outcome: OUTCOMES.wrong, remaining: Math.max(0, limit - attempts) };
   }
 
-  return { begin, submit };
+  /**
+   * Lève un blocage à la demande du staff.
+   *
+   * Vit dans le moteur et non dans la commande, parce que le déblocage touche
+   * les trois choses dont le moteur est seul dépositaire : la ligne d'état,
+   * l'historique — conditionnel — et l'épreuve en mémoire. Porter cette règle
+   * dans la couche Discord y remettrait la logique métier que les composants
+   * n'ont pas le droit de connaître.
+   *
+   * @returns {{ outcome: string }} `unblocked`, `counter_reset` ou `nothing_to_do`
+   */
+  function unblock({ userId, actorId }) {
+    const { changed, wasBlocked } = repository.registerUnblock(userId, actorId);
+
+    // Remise à zéro complète : le membre repart sur un nouveau code plutôt que
+    // sur l'image qu'il vient d'échouer. Inconditionnel — une épreuve en cours
+    // sans ligne d'état est possible, le premier échec n'ayant pas encore eu
+    // lieu.
+    store.drop(userId);
+
+    if (!changed) return { outcome: OUTCOMES.nothing_to_do };
+
+    return { outcome: wasBlocked ? OUTCOMES.unblocked : OUTCOMES.counter_reset };
+  }
+
+  return { begin, submit, unblock };
 }

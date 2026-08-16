@@ -858,9 +858,13 @@ Deux exigences transverses :
 
 Pour référence lors de la configuration :
 
-**Hiérarchie staff** — Owner, Admin, Developer, Senior Moderator, Mod, Trainee.
-`Staff` est un rôle commun d'affichage, attribué à toute l'équipe de modération et
-de développement.
+**Hiérarchie staff** — Owner, Admin, S-Modo, Modo, Modo-T. `Staff` est un rôle
+commun d'affichage, attribué à toute l'équipe de modération et de développement.
+
+> Corrigé le 16 août 2026 : le rôle `Developer` n'existe plus sur le serveur, et
+> les trois rôles de modération portent les noms ci-dessus et non `Senior
+> Moderator`, `Mod`, `Trainee`. Relevé en configurant `/unblock`, dont la liste
+> de rôles autorisés couvre cette hiérarchie.
 
 **Rôles de support** — Game Support, Appeal Support, Store Support,
 `Bug / Tech Support`, Partner Support, Recruitment Support.

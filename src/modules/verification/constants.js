@@ -102,4 +102,16 @@ export const OUTCOMES = Object.freeze({
   blocked: 'blocked',
   /** Le membre porte déjà le rôle : rien à faire, rien à consommer. */
   already_verified: 'already_verified',
+
+  // Déblocage par le staff. Trois issues et non deux : « rien à faire » dit au
+  // modérateur qu'il s'est trompé de personne, là où un « c'est fait »
+  // indifférencié le laisserait croire qu'il a réglé un problème qui existe
+  // ailleurs.
+
+  /** Le membre était bloqué, il ne l'est plus. */
+  unblocked: 'unblocked',
+  /** Des tentatives sans blocage : le compteur est reparti de zéro. */
+  counter_reset: 'counter_reset',
+  /** Aucune ligne : ce membre n'avait ni tentative ni blocage. */
+  nothing_to_do: 'nothing_to_do',
 });

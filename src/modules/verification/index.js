@@ -11,6 +11,7 @@
  */
 
 import { createChallenge } from './challenge/index.js';
+import { createCommands } from './commands.js';
 import { createComponents } from './components.js';
 import { createVerificationEngine } from './engine.js';
 import { createVerificationRepository } from './repository.js';
@@ -123,6 +124,15 @@ export function init(ctx) {
  * est évalué à l'import du module, bien avant qu'`init()` ne l'ait monté.
  */
 export const components = createComponents({ engine: getEngine });
+
+/**
+ * Commande de déblocage, réservée à la modération.
+ *
+ * Sa liste de rôles vit dans `commands.unblock.allowed_roles`, section du
+ * noyau, et non dans celle du module : les permissions de commande sont un
+ * mécanisme du socle, identique pour tous les modules.
+ */
+export const commands = createCommands({ engine: getEngine });
 
 /**
  * Publie le message d'accueil au démarrage.

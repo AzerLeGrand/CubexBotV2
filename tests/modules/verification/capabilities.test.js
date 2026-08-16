@@ -165,11 +165,13 @@ describe('forme des déclarations', () => {
     assert.equal(new Set(alerts.map((alert) => alert.refs[1].path)).size, 2);
   });
 
-  test('le module est désormais complet, sauf sa commande', async () => {
+  test('le module est complet : il déclare tout ce que le contrat prévoit', async () => {
     const module = await import('../../../src/modules/verification/index.js');
 
-    // Le parcours entier : tables, moteur, message d'accueil, boutons, modale.
+    // Le contrat entier du socle, tel que CLAUDE.md le décrit. La phase 1 est
+    // le premier module à en remplir toutes les cases.
     for (const field of [
+      'name',
       'migrations',
       'retention',
       'erasure',
@@ -178,14 +180,13 @@ describe('forme des déclarations', () => {
       'ready',
       'events',
       'components',
+      'commands',
     ]) {
       assert.notEqual(module[field], undefined, `${field} est déclaré`);
     }
 
     assert.equal(module.components.length, 3, 'start, open et submit');
     assert.equal(module.events.length, 1, 'la seule republication du message d\'accueil');
-
-    // La commande de déblocage arrive au lot suivant.
-    assert.equal(module.commands, undefined);
+    assert.equal(module.commands.length, 1, 'le seul déblocage');
   });
 });

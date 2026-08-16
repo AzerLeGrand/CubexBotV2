@@ -87,6 +87,26 @@ templates:
     title_key: "verification.role_failed.title"
     description_key: "verification.role_failed.description"
 
+  # Déblocage : trois gabarits et non un seul paramétré. Un gabarit porte un
+  # titre et une couleur FIXES — un gabarit unique donnerait les mêmes aux trois
+  # cas, et le modérateur perdrait la distinction au coup d'œil.
+  verification_unblocked:
+    color: "success"
+    title_key: "verification.unblock.unblocked.title"
+    description_key: "verification.unblock.unblocked.description"
+
+  verification_counter_reset:
+    color: "success"
+    title_key: "verification.unblock.counter_reset.title"
+    description_key: "verification.unblock.counter_reset.description"
+
+  # Information et non succès : rien ne s'est passé, et le modérateur s'est
+  # probablement trompé de personne.
+  verification_nothing_to_do:
+    color: "info"
+    title_key: "verification.unblock.nothing_to_do.title"
+    description_key: "verification.unblock.nothing_to_do.description"
+
   # Journal des arrivées, lu par les modérateurs. Ce n'est pas une alerte : la
   # couleur informe, et le message ne mentionne personne.
   verification_log_success:

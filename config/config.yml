@@ -26,6 +26,17 @@ commands:
     allowed_roles:
       - "1380366331517603890" # Owner
       - "1375088655378677872" # Admin
+  # Liste distincte de celle de reload, délibérément : recharger la
+  # configuration est une action d'exploitation, débloquer un membre une action
+  # de modération courante. Les deux n'ont aucune raison de partager la même
+  # liste.
+  unblock:
+    allowed_roles:
+      - "1380366331517603890" # Owner
+      - "1375088655378677872" # Admin
+      - "1386479654914887720" # S-Modo
+      - "1380366470730616966" # Modo
+      - "1456439317865169092" # Modo-T
 
 database:
   # Chemin relatif à la racine du projet. Le dossier est exclu de Git.

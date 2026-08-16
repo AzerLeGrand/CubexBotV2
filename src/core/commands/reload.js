@@ -1,4 +1,5 @@
 import { formatErrorsWithin } from '../config/errors.js';
+import { EPHEMERAL } from '../discord/flags.js';
 import { EMBED_LIMITS } from '../embeds/limits.js';
 
 /**
@@ -73,6 +74,3 @@ export function createReloadCommand({ config, embeds, logger, afterReload = null
     },
   };
 }
-
-/** `MessageFlags.Ephemeral` — la réponse ne regarde que le demandeur. */
-const EPHEMERAL = 64;

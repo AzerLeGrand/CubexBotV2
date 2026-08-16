@@ -275,9 +275,14 @@ empêche **toute** entrée sur le serveur et doit remonter à qui peut la corrig
 Commande slash de déblocage, prenant un membre en paramètre. Elle remet le
 compteur à zéro et lève le blocage.
 
-**Rôles autorisés :** toute la hiérarchie de modération, de `Trainee` à `Owner`.
-Configurable via `commands.unblock.allowed_roles`, dans la section `commands` du
-noyau et non dans la section du module.
+**Rôles autorisés :** toute la hiérarchie de modération, de `Modo-T` à `Owner` —
+soit `Owner`, `Admin`, `S-Modo`, `Modo` et `Modo-T`. Configurable via
+`commands.unblock.allowed_roles`, dans la section `commands` du noyau et non
+dans la section du module.
+
+Liste **distincte** de celle de `/reload`, délibérément : recharger la
+configuration est une action d'exploitation, débloquer un membre une action de
+modération courante. Les deux n'ont aucune raison de partager la même liste.
 
 Sans cette commande, un membre bloqué le resterait définitivement, le seul recours
 étant une modification manuelle de la base.

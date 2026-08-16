@@ -20,9 +20,6 @@ export function createVerificationRepository({ database, now = () => new Date().
     block: database.prepare(
       'UPDATE verification_state SET blocked_at = ?, updated_at = ? WHERE user_id = ?',
     ),
-    unblock: database.prepare(
-      'UPDATE verification_state SET attempts = 0, blocked_at = NULL, updated_at = ? WHERE user_id = ?',
-    ),
     clear: database.prepare('DELETE FROM verification_state WHERE user_id = ?'),
     record: database.prepare(
       'INSERT INTO verification_history (user_id, event, actor_id, created_at) VALUES (?, ?, ?, ?)',
@@ -94,17 +91,33 @@ export function createVerificationRepository({ database, now = () => new Date().
   });
 
   /**
-   * Lève un blocage à la demande du staff (lot suivant).
+   * Lève un blocage à la demande du staff.
    *
-   * Remet le compteur à zéro et efface `blocked_at` plutôt que de supprimer la
-   * ligne : `actor_id` doit rester dans l'historique, et la ligne d'état
-   * disparaîtra d'elle-même à la première vérification réussie.
+   * **SUPPRIME la ligne**, exactement comme la réussite. Cette table ne contient
+   * que les vérifications en cours et les blocages actifs : une ligne à zéro
+   * sans blocage n'est ni l'un ni l'autre, et s'accumulerait à chaque
+   * déblocage. L'absence de ligne se lit comme un compteur à zéro.
+   *
+   * L'historique n'est écrit **que si quelque chose a changé**. Une commande
+   * sans effet n'est pas une action, et l'inscrire polluerait l'historique qui
+   * sert justement à retrouver ce qui s'est passé.
+   *
+   * `wasBlocked` distingue le déblocage de la simple remise à zéro d'un
+   * compteur : le modérateur doit savoir laquelle des deux il vient de faire.
+   *
+   * @returns {{ changed: boolean, wasBlocked: boolean }}
    */
   const registerUnblock = database.transaction((userId, actorId) => {
-    const at = now();
+    const state = find(userId);
 
-    statements.unblock.run(at, userId);
-    statements.record.run(userId, HISTORY_EVENTS.unblock, actorId, at);
+    if (state === null) return { changed: false, wasBlocked: false };
+
+    const wasBlocked = state.blocked_at != null;
+
+    statements.clear.run(userId);
+    statements.record.run(userId, HISTORY_EVENTS.unblock, actorId, now());
+
+    return { changed: true, wasBlocked };
   });
 
   return {

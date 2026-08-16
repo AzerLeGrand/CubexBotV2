@@ -543,22 +543,37 @@ describe('blocage', () => {
     assert.equal(held.engine.begin({ userId: AUTRE, hasRole: false }).outcome, OUTCOMES.issued);
   });
 
-  test('le déblocage remet le compteur à zéro et garde l\'auteur en historique', async (t) => {
+  test('le déblocage supprime la ligne et garde l\'auteur en historique', async (t) => {
     const held = sandbox(t);
 
     await echouer(held, 5);
-    held.repository.registerUnblock(MEMBRE, AUTRE);
 
-    const state = held.repository.find(MEMBRE);
+    const { changed, wasBlocked } = held.repository.registerUnblock(MEMBRE, AUTRE);
 
-    assert.equal(state.attempts, 0);
-    assert.equal(state.blocked_at, null);
+    assert.deepEqual({ changed, wasBlocked }, { changed: true, wasBlocked: true });
+
+    // La ligne est SUPPRIMÉE, pas remise à zéro : cette table ne contient que
+    // les vérifications en cours et les blocages actifs, et une ligne à zéro
+    // sans blocage n'est ni l'un ni l'autre — elle s'accumulerait à chaque
+    // déblocage. L'absence de ligne se lit comme un compteur à zéro.
+    assert.equal(held.repository.find(MEMBRE), null);
     assert.equal(held.repository.isBlocked(MEMBRE), false);
 
     const derniere = held.repository.history(MEMBRE).at(-1);
 
     assert.equal(derniere.event, HISTORY_EVENTS.unblock);
     assert.equal(derniere.actor_id, AUTRE);
+  });
+
+  test('un déblocage sans effet n\'écrit rien', async (t) => {
+    const held = sandbox(t);
+
+    const résultat = held.repository.registerUnblock(MEMBRE, AUTRE);
+
+    // Une commande sans effet n'est pas une action : l'inscrire polluerait un
+    // historique qui sert justement à retrouver ce qui s'est passé.
+    assert.deepEqual(résultat, { changed: false, wasBlocked: false });
+    assert.deepEqual(events(held.repository, MEMBRE), []);
   });
 });
 
