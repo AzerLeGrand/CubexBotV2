@@ -82,18 +82,27 @@ verification:
       Votre code était correct, mais le rôle d'accès n'a pas pu vous être
       attribué. L'équipe technique vient d'être prévenue. Réessayez dans un
       moment, ou contactez l'équipe si le problème persiste.
+  log:
+    # Salon d'arrivées, lu par les modérateurs. Aucune mention : un salon qui
+    # notifie à chaque entrée devient inutilisable dès la première vague.
+    success:
+      title: "Vérification réussie"
+      description: "{member} a résolu la vérification et reçu son accès."
   alerts:
+    # Le rôle mentionné n'apparaît PAS dans ces descriptions : une mention
+    # placée dans un embed s'affiche sans notifier personne. Elle part dans le
+    # contenu du message, où elle prévient réellement.
     exhausted:
       title: "Tentatives de vérification épuisées"
       description: >-
-        {role} — le membre {member} a épuisé ses tentatives de vérification et
-        se trouve bloqué. Il peut s'agir d'un compte automatisé comme d'un
-        membre en difficulté de lecture.
+        Le membre {member} a épuisé ses tentatives de vérification et se trouve
+        bloqué. Il peut s'agir d'un compte automatisé comme d'un membre en
+        difficulté de lecture.
     role_failure:
       title: "Attribution du rôle impossible"
       description: >-
-        {role} — le rôle de vérification n'a pas pu être attribué à {member}.
-        Vérifiez que le rôle du bot est placé au-dessus du rôle attribué dans la
+        Le rôle de vérification n'a pas pu être attribué à {member}. Vérifiez
+        que le rôle du bot est placé au-dessus du rôle attribué dans la
         hiérarchie, que la permission de gestion des rôles est accordée, et que
         le rôle configuré existe toujours. Aucun membre ne peut entrer sur le
         serveur tant que cette panne dure.

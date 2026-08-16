@@ -113,7 +113,7 @@ const events = (repository, userId) =>
   repository.history(userId).map((row) => row.event);
 
 describe('génération du code', () => {
-  test('respecte la longueur et l\'alphabet configurés', (t) => {
+  test('respecte la longueur et l\'alphabet configurés', async (t) => {
     const { challenge, config } = sandbox(t);
     const alphabet = config.get('verification.challenge.alphabet');
 
@@ -125,13 +125,13 @@ describe('génération du code', () => {
     }
   });
 
-  test('suit la longueur quand la configuration change', (t) => {
+  test('suit la longueur quand la configuration change', async (t) => {
     const { challenge } = sandbox(t, { overrides: { 'verification.challenge.code_length': 9 } });
 
     assert.equal(challenge.issue().secret.length, 9);
   });
 
-  test('ne tire pas deux fois la même chose', (t) => {
+  test('ne tire pas deux fois la même chose', async (t) => {
     const { challenge } = sandbox(t);
     const tirages = new Set();
 
@@ -142,7 +142,7 @@ describe('génération du code', () => {
     assert.equal(tirages.size, 60);
   });
 
-  test('rend un PNG', (t) => {
+  test('rend un PNG', async (t) => {
     const { challenge } = sandbox(t);
     const { attachment } = challenge.issue();
 
@@ -153,7 +153,7 @@ describe('génération du code', () => {
 });
 
 describe('la police', () => {
-  test('un chemin erroné refuse le démarrage plutôt que de rendre une image vide', (t) => {
+  test('un chemin erroné refuse le démarrage plutôt que de rendre une image vide', async (t) => {
     // registerFromPath ne lève pas : il rend null. Sans contrôle, le captcha
     // sortirait dans une police de repli, ou en carrés vides sur une Debian nue.
     const { logger } = sandbox(t);
@@ -168,7 +168,7 @@ describe('la police', () => {
 });
 
 describe('normalisation de la saisie', () => {
-  test('ignore la casse et les espaces quand la configuration le dit', (t) => {
+  test('ignore la casse et les espaces quand la configuration le dit', async (t) => {
     const { challenge } = sandbox(t);
 
     assert.equal(challenge.accepts('ABC234', 'abc234'), true);
@@ -177,7 +177,7 @@ describe('normalisation de la saisie', () => {
     assert.equal(challenge.accepts('ABC234', 'ABC235'), false);
   });
 
-  test('respecte la casse quand la bascule l\'exige', (t) => {
+  test('respecte la casse quand la bascule l\'exige', async (t) => {
     const { challenge } = sandbox(t, {
       overrides: { 'verification.challenge.input.case_sensitive': true },
     });
@@ -186,7 +186,7 @@ describe('normalisation de la saisie', () => {
     assert.equal(challenge.accepts('ABC234', 'ABC234'), true);
   });
 
-  test('conserve les espaces quand la bascule l\'exige', (t) => {
+  test('conserve les espaces quand la bascule l\'exige', async (t) => {
     const { challenge } = sandbox(t, {
       overrides: { 'verification.challenge.input.strip_whitespace': false },
     });
@@ -194,7 +194,7 @@ describe('normalisation de la saisie', () => {
     assert.equal(challenge.accepts('ABC234', 'ABC 234'), false);
   });
 
-  test('traite une saisie absente sans lever', (t) => {
+  test('traite une saisie absente sans lever', async (t) => {
     const { challenge } = sandbox(t);
 
     for (const value of [undefined, null, '']) {
@@ -204,7 +204,7 @@ describe('normalisation de la saisie', () => {
 });
 
 describe('begin — demande d\'épreuve', () => {
-  test('rend une épreuve à un membre inconnu', (t) => {
+  test('rend une épreuve à un membre inconnu', async (t) => {
     const { engine } = sandbox(t);
 
     const result = engine.begin({ userId: MEMBRE, hasRole: false });
@@ -214,7 +214,7 @@ describe('begin — demande d\'épreuve', () => {
     assert.ok(Buffer.isBuffer(result.attachment));
   });
 
-  test('un reclic pendant la validité ne recalcule rien', (t) => {
+  test('un reclic pendant la validité ne recalcule rien', async (t) => {
     const { engine, time } = sandbox(t);
 
     const premier = engine.begin({ userId: MEMBRE, hasRole: false });
@@ -229,7 +229,7 @@ describe('begin — demande d\'épreuve', () => {
     assert.equal(second.expiresAt, premier.expiresAt, 'la validité ne se prolonge pas non plus');
   });
 
-  test('après expiration, une nouvelle épreuve est tirée', (t) => {
+  test('après expiration, une nouvelle épreuve est tirée', async (t) => {
     const { engine, time } = sandbox(t);
 
     const premier = engine.begin({ userId: MEMBRE, hasRole: false });
@@ -240,7 +240,7 @@ describe('begin — demande d\'épreuve', () => {
     assert.equal(second.reused, false);
   });
 
-  test('refuse un membre déjà vérifié sans rien générer', (t) => {
+  test('refuse un membre déjà vérifié sans rien générer', async (t) => {
     const { engine, store } = sandbox(t);
 
     const result = engine.begin({ userId: MEMBRE, hasRole: true });
@@ -250,7 +250,7 @@ describe('begin — demande d\'épreuve', () => {
     assert.equal(store.size, 0, 'aucune épreuve n\'a été rangée');
   });
 
-  test('refuse un membre bloqué sans rien générer', (t) => {
+  test('refuse un membre bloqué sans rien générer', async (t) => {
     const { engine, repository, store } = sandbox(t);
 
     repository.registerFailure(MEMBRE, 1);
@@ -271,14 +271,14 @@ describe('submit — soumission d\'un code', () => {
     return held.store.get(userId).secret;
   };
 
-  test('un code correct réussit, supprime la ligne d\'état et journalise', (t) => {
+  test('un code correct réussit, supprime la ligne d\'état et journalise', async (t) => {
     const held = sandbox(t);
     const secret = engage(held);
 
     // Une ligne d'état existe : le membre a échoué une fois avant de réussir.
     held.repository.registerFailure(MEMBRE, 5);
 
-    const result = held.engine.submit({ userId: MEMBRE, hasRole: false, input: secret });
+    const result = await held.engine.submit({ userId: MEMBRE, hasRole: false, input: secret, onAccepted: async () => {} });
 
     assert.equal(result.outcome, OUTCOMES.success);
     assert.equal(held.repository.find(MEMBRE), null, 'la ligne est supprimée, pas remise à zéro');
@@ -289,11 +289,11 @@ describe('submit — soumission d\'un code', () => {
     assert.equal(held.store.size, 0, 'l\'épreuve est retirée de la mémoire');
   });
 
-  test('un code faux consomme une tentative et annonce le reste', (t) => {
+  test('un code faux consomme une tentative et annonce le reste', async (t) => {
     const held = sandbox(t);
     engage(held);
 
-    const result = held.engine.submit({ userId: MEMBRE, hasRole: false, input: 'FAUXXX' });
+    const result = await held.engine.submit({ userId: MEMBRE, hasRole: false, input: 'FAUXXX' });
 
     assert.equal(result.outcome, OUTCOMES.wrong);
     assert.equal(result.remaining, 4);
@@ -301,70 +301,151 @@ describe('submit — soumission d\'un code', () => {
     assert.deepEqual(events(held.repository, MEMBRE), [HISTORY_EVENTS.failure]);
   });
 
-  test('l\'épreuve survit à un code faux : le membre relit la même image', (t) => {
+  test('l\'épreuve survit à un code faux : le membre relit la même image', async (t) => {
     const held = sandbox(t);
     const secret = engage(held);
 
-    held.engine.submit({ userId: MEMBRE, hasRole: false, input: 'FAUXXX' });
+    await held.engine.submit({ userId: MEMBRE, hasRole: false, input: 'FAUXXX' });
 
     assert.equal(held.store.get(MEMBRE).secret, secret);
   });
 
-  test('un code expiré ne consomme aucune tentative', (t) => {
+  test('un code expiré ne consomme aucune tentative', async (t) => {
     const held = sandbox(t);
     const secret = engage(held);
 
     held.time.advance(300_001);
 
-    const result = held.engine.submit({ userId: MEMBRE, hasRole: false, input: secret });
+    const result = await held.engine.submit({ userId: MEMBRE, hasRole: false, input: secret, onAccepted: async () => {} });
 
     assert.equal(result.outcome, OUTCOMES.expired);
     assert.equal(held.repository.find(MEMBRE), null, 'aucune ligne d\'état créée');
     assert.deepEqual(events(held.repository, MEMBRE), []);
   });
 
-  test('un code absent de la mémoire ne consomme aucune tentative', (t) => {
+  test('un code absent de la mémoire ne consomme aucune tentative', async (t) => {
     // Le cas du redémarrage : le membre a son image sous les yeux, son code
     // n'existe plus. Ce n'est pas son erreur.
     const held = sandbox(t);
 
-    const result = held.engine.submit({ userId: MEMBRE, hasRole: false, input: 'ABC234' });
+    const result = await held.engine.submit({ userId: MEMBRE, hasRole: false, input: 'ABC234' });
 
     assert.equal(result.outcome, OUTCOMES.expired);
     assert.equal(held.repository.find(MEMBRE), null);
   });
 
-  test('un membre déjà vérifié est refusé sans consommer', (t) => {
+  test('un membre déjà vérifié est refusé sans consommer', async (t) => {
     const held = sandbox(t);
     engage(held);
 
-    const result = held.engine.submit({ userId: MEMBRE, hasRole: true, input: 'FAUXXX' });
+    const result = await held.engine.submit({ userId: MEMBRE, hasRole: true, input: 'FAUXXX' });
 
     assert.equal(result.outcome, OUTCOMES.already_verified);
     assert.equal(held.repository.find(MEMBRE), null);
   });
 
-  test('un membre bloqué est refusé sans consommer', (t) => {
+  test('un membre bloqué est refusé sans consommer', async (t) => {
     const held = sandbox(t);
     engage(held);
     held.repository.registerFailure(MEMBRE, 1);
 
     const avant = held.repository.find(MEMBRE).attempts;
-    const result = held.engine.submit({ userId: MEMBRE, hasRole: false, input: 'FAUXXX' });
+    const result = await held.engine.submit({ userId: MEMBRE, hasRole: false, input: 'FAUXXX' });
 
     assert.equal(result.outcome, OUTCOMES.blocked);
     assert.equal(result.justBlocked, false);
     assert.equal(held.repository.find(MEMBRE).attempts, avant, 'le compteur n\'a pas bougé');
   });
 
-  test('la casse et les espaces n\'empêchent pas de réussir', (t) => {
+  test('l\'action fournie s\'exécute AVANT l\'écriture de la réussite', async (t) => {
+    const held = sandbox(t);
+    const secret = engage(held);
+    const ordre = [];
+
+    await held.engine.submit({
+      userId: MEMBRE,
+      hasRole: false,
+      input: secret,
+      onAccepted: async () => {
+        // Au moment de l'appel, rien ne doit encore avoir été écrit ni retiré.
+        ordre.push('action');
+        ordre.push(held.store.get(MEMBRE) === null ? 'épreuve retirée' : 'épreuve intacte');
+        ordre.push(held.repository.history(MEMBRE).length === 0 ? 'base intacte' : 'base écrite');
+      },
+    });
+
+    ordre.push('retour');
+
+    assert.deepEqual(ordre, ['action', 'épreuve intacte', 'base intacte', 'retour']);
+  });
+
+  test('une action en échec ne touche à rien : le code reste valable', async (t) => {
     const held = sandbox(t);
     const secret = engage(held);
 
-    const result = held.engine.submit({
+    await assert.rejects(() =>
+      held.engine.submit({
+        userId: MEMBRE,
+        hasRole: false,
+        input: secret,
+        onAccepted: async () => {
+          throw new Error('attribution impossible');
+        },
+      }),
+    );
+
+    // Le membre reclique une fois le serveur réparé et retombe sur la même
+    // image, sans qu'on la régénère : c'est ce qui se perdrait si `drop`
+    // passait devant l'action.
+    assert.equal(held.store.get(MEMBRE).secret, secret);
+    assert.equal(held.repository.find(MEMBRE), null, 'aucune réussite écrite');
+    assert.deepEqual(events(held.repository, MEMBRE), [], 'aucune tentative consommée non plus');
+  });
+
+  test('oublier l\'action lève plutôt que d\'écrire une réussite non méritée', async (t) => {
+    const held = sandbox(t);
+    const secret = engage(held);
+
+    await assert.rejects(
+      () => held.engine.submit({ userId: MEMBRE, hasRole: false, input: secret }),
+      /« onAccepted » est requis/,
+    );
+
+    assert.equal(held.repository.find(MEMBRE), null);
+  });
+
+  test('une écriture en échec après l\'action laisse le membre vérifié', async (t) => {
+    // Cas inverse : l'action réussit, l'écriture échoue. Le membre a son rôle,
+    // la ligne d'état survit — sans conséquence, puisque `hasRole` le fera
+    // répondre « déjà vérifié » au clic suivant. Vérifié plutôt que supposé.
+    const held = sandbox(t);
+    const secret = engage(held);
+
+    held.database.exec('DROP TABLE verification_history');
+
+    await assert.rejects(() =>
+      held.engine.submit({
+        userId: MEMBRE,
+        hasRole: false,
+        input: secret,
+        onAccepted: async () => {},
+      }),
+    );
+
+    const apres = await held.engine.submit({ userId: MEMBRE, hasRole: true, input: secret });
+
+    assert.equal(apres.outcome, OUTCOMES.already_verified);
+  });
+
+  test('la casse et les espaces n\'empêchent pas de réussir', async (t) => {
+    const held = sandbox(t);
+    const secret = engage(held);
+
+    const result = await held.engine.submit({
       userId: MEMBRE,
       hasRole: false,
       input: ` ${secret.toLowerCase()} `,
+      onAccepted: async () => {},
     });
 
     assert.equal(result.outcome, OUTCOMES.success);
@@ -372,21 +453,21 @@ describe('submit — soumission d\'un code', () => {
 });
 
 describe('blocage', () => {
-  const echouer = (held, fois) => {
+  const echouer = async (held, fois) => {
     let result = null;
 
     for (let i = 0; i < fois; i += 1) {
       held.engine.begin({ userId: MEMBRE, hasRole: false });
-      result = held.engine.submit({ userId: MEMBRE, hasRole: false, input: 'FAUXXX' });
+      result = await held.engine.submit({ userId: MEMBRE, hasRole: false, input: 'FAUXXX' });
     }
 
     return result;
   };
 
-  test('le seuil atteint pose le blocage et le signale comme nouveau', (t) => {
+  test('le seuil atteint pose le blocage et le signale comme nouveau', async (t) => {
     const held = sandbox(t);
 
-    const result = echouer(held, 5);
+    const result = await echouer(held, 5);
 
     assert.equal(result.outcome, OUTCOMES.blocked);
     assert.equal(result.justBlocked, true, 'sans ce drapeau, l\'alerte partirait à chaque clic');
@@ -398,10 +479,10 @@ describe('blocage', () => {
     assert.match(state.blocked_at, /^\d{4}-\d{2}-\d{2}T/, 'ISO 8601 strict, avec le T');
   });
 
-  test('l\'historique porte les cinq échecs puis le blocage', (t) => {
+  test('l\'historique porte les cinq échecs puis le blocage', async (t) => {
     const held = sandbox(t);
 
-    echouer(held, 5);
+    await echouer(held, 5);
 
     assert.deepEqual(events(held.repository, MEMBRE), [
       ...Array.from({ length: 5 }, () => HISTORY_EVENTS.failure),
@@ -409,31 +490,31 @@ describe('blocage', () => {
     ]);
   });
 
-  test('l\'épreuve est retirée de la mémoire au blocage', (t) => {
+  test('l\'épreuve est retirée de la mémoire au blocage', async (t) => {
     const held = sandbox(t);
 
-    echouer(held, 5);
+    await echouer(held, 5);
 
     assert.equal(held.store.size, 0);
   });
 
-  test('le compte des tentatives restantes décroît jusqu\'au blocage', (t) => {
+  test('le compte des tentatives restantes décroît jusqu\'au blocage', async (t) => {
     const held = sandbox(t);
     const restes = [];
 
     for (let i = 0; i < 4; i += 1) {
       held.engine.begin({ userId: MEMBRE, hasRole: false });
-      restes.push(held.engine.submit({ userId: MEMBRE, hasRole: false, input: 'FAUXXX' }).remaining);
+      restes.push((await held.engine.submit({ userId: MEMBRE, hasRole: false, input: 'FAUXXX' })).remaining);
     }
 
     assert.deepEqual(restes, [4, 3, 2, 1]);
   });
 
-  test('l\'incrément et le blocage sont dans la même transaction', (t) => {
+  test('l\'incrément et le blocage sont dans la même transaction', async (t) => {
     const held = sandbox(t);
 
     held.engine.begin({ userId: MEMBRE, hasRole: false });
-    held.engine.submit({ userId: MEMBRE, hasRole: false, input: 'FAUXXX' });
+    await held.engine.submit({ userId: MEMBRE, hasRole: false, input: 'FAUXXX' });
 
     const avant = held.repository.find(MEMBRE).attempts;
 
@@ -443,7 +524,7 @@ describe('blocage', () => {
     // donc en tentatives illimitées.
     held.database.exec('DROP TABLE verification_history');
 
-    assert.throws(() =>
+    await assert.rejects(() =>
       held.engine.submit({ userId: MEMBRE, hasRole: false, input: 'FAUXXX' }),
     );
 
@@ -453,19 +534,19 @@ describe('blocage', () => {
     assert.equal(apres.blocked_at, null, 'aucun blocage posé');
   });
 
-  test('un blocage ne suit pas un autre membre', (t) => {
+  test('un blocage ne suit pas un autre membre', async (t) => {
     const held = sandbox(t);
 
-    echouer(held, 5);
+    await echouer(held, 5);
 
     assert.equal(held.repository.isBlocked(AUTRE), false);
     assert.equal(held.engine.begin({ userId: AUTRE, hasRole: false }).outcome, OUTCOMES.issued);
   });
 
-  test('le déblocage remet le compteur à zéro et garde l\'auteur en historique', (t) => {
+  test('le déblocage remet le compteur à zéro et garde l\'auteur en historique', async (t) => {
     const held = sandbox(t);
 
-    echouer(held, 5);
+    await echouer(held, 5);
     held.repository.registerUnblock(MEMBRE, AUTRE);
 
     const state = held.repository.find(MEMBRE);
@@ -482,7 +563,7 @@ describe('blocage', () => {
 });
 
 describe('mémoire des épreuves', () => {
-  test('le balayage retire les entrées échues et laisse les autres', (t) => {
+  test('le balayage retire les entrées échues et laisse les autres', async (t) => {
     const { store, time } = sandbox(t);
 
     store.put(MEMBRE, { secret: 'ABC234', attachment: Buffer.alloc(1) });
@@ -498,7 +579,7 @@ describe('mémoire des épreuves', () => {
     assert.notEqual(store.get(AUTRE), null);
   });
 
-  test('le minuteur ne retient pas le processus et s\'annule à l\'arrêt', (t) => {
+  test('le minuteur ne retient pas le processus et s\'annule à l\'arrêt', async (t) => {
     const { config, logger } = sandbox(t);
     const fermetures = [];
 
@@ -521,7 +602,7 @@ describe('mémoire des épreuves', () => {
     assert.doesNotThrow(() => store.stop());
   });
 
-  test('l\'entrée échue disparaît à la lecture, sans attendre le balayage', (t) => {
+  test('l\'entrée échue disparaît à la lecture, sans attendre le balayage', async (t) => {
     const { store, time } = sandbox(t);
 
     store.put(MEMBRE, { secret: 'ABC234', attachment: Buffer.alloc(1) });
@@ -533,7 +614,7 @@ describe('mémoire des épreuves', () => {
 });
 
 describe('rendu lent', () => {
-  test('un rendu au-delà du seuil est journalisé', (t) => {
+  test('un rendu au-delà du seuil est journalisé', async (t) => {
     // Seuil à zéro : tout rendu le dépasse. C'est la seule façon de découvrir
     // qu'une machine est un ordre de grandeur plus lente avant que des
     // interactions n'expirent sous les yeux des membres.
@@ -550,7 +631,7 @@ describe('rendu lent', () => {
     assert.equal(typeof entree.context.elapsed_ms, 'number');
   });
 
-  test('un rendu normal ne dit rien', (t) => {
+  test('un rendu normal ne dit rien', async (t) => {
     const { challenge, logger } = sandbox(t);
 
     challenge.issue();
@@ -560,7 +641,7 @@ describe('rendu lent', () => {
 });
 
 describe('message permanent', () => {
-  test('enregistre et relit l\'identifiant par salon', (t) => {
+  test('enregistre et relit l\'identifiant par salon', async (t) => {
     const { repository } = sandbox(t);
 
     assert.equal(repository.message.find('111'), null);

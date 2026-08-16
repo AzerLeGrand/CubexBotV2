@@ -165,17 +165,27 @@ describe('forme des déclarations', () => {
     assert.equal(new Set(alerts.map((alert) => alert.refs[1].path)).size, 2);
   });
 
-  test('le module déclare, il n\'agit pas encore', async () => {
+  test('le module est désormais complet, sauf sa commande', async () => {
     const module = await import('../../../src/modules/verification/index.js');
 
-    // Déclaratif, plus le moteur monté par init().
-    for (const field of ['migrations', 'retention', 'erasure', 'capabilities', 'init']) {
+    // Le parcours entier : tables, moteur, message d'accueil, boutons, modale.
+    for (const field of [
+      'migrations',
+      'retention',
+      'erasure',
+      'capabilities',
+      'init',
+      'ready',
+      'events',
+      'components',
+    ]) {
       assert.notEqual(module[field], undefined, `${field} est déclaré`);
     }
 
-    // Rien de visible sur le serveur : aucune interaction n'est encore câblée.
-    for (const field of ['commands', 'components', 'events', 'ready']) {
-      assert.equal(module[field], undefined, `${field} arrive à un lot ultérieur`);
-    }
+    assert.equal(module.components.length, 3, 'start, open et submit');
+    assert.equal(module.events.length, 1, 'la seule republication du message d\'accueil');
+
+    // La commande de déblocage arrive au lot suivant.
+    assert.equal(module.commands, undefined);
   });
 });

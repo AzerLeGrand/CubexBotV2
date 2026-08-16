@@ -87,6 +87,13 @@ templates:
     title_key: "verification.role_failed.title"
     description_key: "verification.role_failed.description"
 
+  # Journal des arrivées, lu par les modérateurs. Ce n'est pas une alerte : la
+  # couleur informe, et le message ne mentionne personne.
+  verification_log_success:
+    color: "info"
+    title_key: "verification.log.success.title"
+    description_key: "verification.log.success.description"
+
   # Les deux alertes partent dans un salon staff, jamais vers le membre.
   verification_alert_exhausted:
     color: "error"

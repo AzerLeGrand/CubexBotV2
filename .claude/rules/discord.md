@@ -116,6 +116,32 @@ donc défère puis édite.
 `deferReply()` posé là rendrait `showModal()` impossible partout. C'est au module
 de savoir lequel des deux cas s'applique.
 
+### Une mention dans un embed ne notifie personne
+
+Discord affiche la mention comme un lien, mais **seul le `content` du message
+déclenche une notification**. Une alerte dont la mention vit dans la description
+de l'embed est publiée et reste invisible jusqu'à ce que quelqu'un ouvre le
+salon par hasard.
+
+```js
+channel.send({
+  content: `<@&${roleId}>`,               // notifie
+  embeds: [embed],                        // le detail, sans mention
+  allowedMentions: { roles: [roleId] },   // et rien d'autre
+});
+```
+
+**Énumérer les mentions autorisées, toujours.** Les textes viennent de
+`messages.yml`, que le staff édite : un `@everyone` glissé dans un gabarit
+d'alerte notifierait le serveur entier. `allowedMentions` ferme la porte quelle
+que soit la suite du fichier — `{ parse: [] }` pour un message qui ne doit
+notifier personne.
+
+Deuxième condition, hors du code : **le rôle doit être mentionnable**, ou le bot
+doit porter la permission de mentionner tous les rôles. À défaut la mention
+s'affiche en texte brut et ne prévient toujours personne — même symptôme, cause
+différente, et impossible à distinguer sans le savoir.
+
 ### Ce que le routeur ne fait pas
 
 Aucun contrôle de propriété du message. Discord garantit déjà qu'un composant

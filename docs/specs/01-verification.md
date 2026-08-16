@@ -470,6 +470,12 @@ Aucune valeur codée en dur ailleurs. Les libellés, titres et messages vivent d
 4. Le rôle mentionné par l'alerte technique doit être **effectivement porté** par
    au moins un membre de l'administration. Une mention vers un rôle vide ne
    prévient personne.
+5. Les deux rôles mentionnés par les alertes doivent être **mentionnables**, ou
+   le bot doit porter la permission de mentionner tous les rôles. À défaut, la
+   mention s'affiche en texte brut et ne notifie personne — même symptôme que le
+   point précédent, cause différente, et impossible à distinguer sans le savoir.
+   Le bot place la mention dans le contenu du message et non dans l'embed, où
+   elle ne notifierait pas davantage.
 
 ---
 

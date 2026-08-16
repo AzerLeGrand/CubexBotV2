@@ -11,9 +11,11 @@
  */
 
 import { createChallenge } from './challenge/index.js';
+import { createComponents } from './components.js';
 import { createVerificationEngine } from './engine.js';
 import { createVerificationRepository } from './repository.js';
 import { createChallengeStore } from './store.js';
+import { ensureWelcome, storedWelcomeId, useRepository } from './welcome.js';
 
 export const name = 'verification';
 
@@ -74,6 +76,7 @@ export const erasure = [
  * module.
  */
 let engine = null;
+let repository = null;
 
 /** @returns {object|null} `null` tant qu'`init()` n'a pas tourné. */
 export const getEngine = () => engine;
@@ -98,12 +101,13 @@ export function init(ctx) {
     shutdown: ctx.shutdown,
   }).start();
 
-  engine = createVerificationEngine({
-    config: ctx.config,
-    challenge,
-    store,
-    repository: createVerificationRepository({ database: ctx.database }),
-  });
+  repository = createVerificationRepository({ database: ctx.database });
+
+  engine = createVerificationEngine({ config: ctx.config, challenge, store, repository });
+
+  // Le message d'accueil se lit et s'écrit hors du moteur : il ne relève pas
+  // de la logique de tentatives.
+  useRepository(repository);
 
   logger.info('captcha monté', {
     challenge: challenge.type,
@@ -111,6 +115,59 @@ export function init(ctx) {
     max_attempts: ctx.config.get('verification.max_attempts'),
   });
 }
+
+/**
+ * Boutons et modale, routés par identifiant persistant.
+ *
+ * Le moteur leur est passé par une fonction et non par valeur : `components`
+ * est évalué à l'import du module, bien avant qu'`init()` ne l'ait monté.
+ */
+export const components = createComponents({ engine: getEngine });
+
+/**
+ * Publie le message d'accueil au démarrage.
+ *
+ * Dans `ready` et non dans un écouteur `clientReady` : celui-ci partirait en
+ * parallèle de la séquence du noyau et publierait avant de savoir si la
+ * capacité du module est active — un salon supprimé, et le bot publierait dans
+ * le vide. Le noyau refuse d'ailleurs cette déclaration.
+ *
+ * Un module désactivé ne reçoit pas `ready` : rien n'est publié quand le salon
+ * ou le rôle est introuvable.
+ */
+export async function ready(ctx) {
+  const result = await ensureWelcome(ctx);
+
+  ctx.logger.forModule(name).info('message de vérification vérifié', result);
+}
+
+/**
+ * Republication en cours de fonctionnement.
+ *
+ * Le filtre porte sur l'identifiant du salon et sur celui stocké en base,
+ * JAMAIS sur le contenu de l'événement : `messageDelete` arrive aussi pour des
+ * messages absents du cache, sous une forme partielle où le contenu manque.
+ *
+ * Aucune boucle possible : la republication enregistre immédiatement le nouvel
+ * identifiant, donc un événement portant l'ancien ne correspond plus à ce que
+ * la base contient. C'est ce qui rend inutile un drapeau « c'est moi qui l'ai
+ * supprimé ».
+ */
+export const events = [
+  {
+    name: 'messageDelete',
+    async execute(ctx, message) {
+      const channelId = ctx.config.get('verification.channel_id');
+
+      if (message.channelId !== channelId) return;
+      if (storedWelcomeId(channelId) !== message.id) return;
+
+      const result = await ensureWelcome(ctx);
+
+      ctx.logger.forModule(name).info('message de vérification republié', result);
+    },
+  },
+];
 
 /**
  * Capacités et références Discord dont elles dépendent (spec §9).

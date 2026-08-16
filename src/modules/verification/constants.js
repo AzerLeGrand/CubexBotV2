@@ -37,6 +37,40 @@ export const HISTORY_EVENTS = Object.freeze({
 export const HISTORY_EVENT_VALUES = Object.freeze(Object.values(HISTORY_EVENTS));
 
 // ---------------------------------------------------------------------------
+// Identifiants de composants — persistés dans les messages Discord
+// ---------------------------------------------------------------------------
+
+/**
+ * Actions routées par l'identifiant de composant, au format
+ * `verification:<action>`.
+ *
+ * Persistés eux aussi, mais dans les messages Discord plutôt qu'en base : un
+ * message d'accueil publié il y a six mois porte encore `verification:start`.
+ * Les renommer rendrait muet tout bouton déjà publié, jusqu'à ce que le message
+ * soit supprimé et republié.
+ *
+ * Aucune donnée n'y transite : l'auteur de l'interaction est déjà dans l'objet
+ * Discord, et le plafond de 100 caractères ne doit pas être entamé pour rien.
+ */
+export const ACTIONS = Object.freeze({
+  /** Bouton du message d'accueil. */
+  start: 'start',
+  /** Bouton « Entrer le code », dans la réponse éphémère. */
+  open: 'open',
+  /** Soumission de la modale. */
+  submit: 'submit',
+});
+
+/**
+ * Champ de saisie de la modale.
+ *
+ * Ce n'est PAS un identifiant de composant routé : il n'est lu que par
+ * `fields.getTextInputValue()` à l'intérieur de la modale, et ne passe donc pas
+ * par l'encodeur du noyau.
+ */
+export const CODE_FIELD = 'code';
+
+// ---------------------------------------------------------------------------
 // Rendu à l'appelant — un contrat interne, renommable
 // ---------------------------------------------------------------------------
 

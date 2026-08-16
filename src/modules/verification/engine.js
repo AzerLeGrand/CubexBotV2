@@ -1,3 +1,5 @@
+import { AppError } from '../../core/errors/app-error.js';
+
 import { OUTCOMES } from './constants.js';
 
 /**
@@ -67,8 +69,17 @@ export function createVerificationEngine({ config, challenge, store, repository 
    * l'absence d'épreuve en mémoire après un redémarrage, ni le rôle déjà porté
    * n'en coûtent une : dans ces trois cas le membre n'a pas fauté, et lui
    * décompter une tentative le rapprocherait d'un blocage qu'il n'a pas mérité.
+   *
+   * `onAccepted` est exécuté **avant** que la réussite ne soit écrite, et son
+   * échec annule tout. C'est ce qui rend l'ordre impossible à inverser : écrire
+   * la réussite d'abord laisserait un membre sans rôle et sans ligne d'état,
+   * donc invité à recommencer un captcha qu'il vient de résoudre, avec un
+   * compteur reparti de zéro.
+   *
+   * Le moteur ne sait pas ce que fait cette promesse — il attend qu'elle
+   * aboutisse, rien de plus. C'est ce qui le garde ignorant de Discord.
    */
-  function submit({ userId, hasRole, input }) {
+  async function submit({ userId, hasRole, input, onAccepted }) {
     if (hasRole) return { outcome: OUTCOMES.already_verified };
     if (repository.isBlocked(userId)) return blocked(false);
 
@@ -80,6 +91,25 @@ export function createVerificationEngine({ config, challenge, store, repository 
     if (held === null) return { outcome: OUTCOMES.expired };
 
     if (challenge.accepts(held.secret, input)) {
+      if (typeof onAccepted !== 'function') {
+        // Exigé sur ce seul chemin : un appelant qui l'oublie doit s'en rendre
+        // compte bruyamment, pas obtenir une réussite écrite sans que l'action
+        // qui la justifie ait eu lieu.
+        throw new AppError('« onAccepted » est requis pour valider une épreuve', {
+          code: 'verification_on_accepted_missing',
+          context: { user: userId },
+          expected: false,
+        });
+      }
+
+      // Aucune tentative n'est consommée sur ce chemin — on est après un
+      // `accepts()` vrai. Propriété facile à casser lors d'une refonte : un
+      // échec d'`onAccepted` ne doit rien coûter au membre non plus.
+      await onAccepted();
+
+      // Après `onAccepted` seulement. Si celui-ci lève, on ressort d'ici sans
+      // avoir rien touché : le code reste valable jusqu'à son expiration, et le
+      // membre qui reclique retombe sur la même image sans qu'on la régénère.
       store.drop(userId);
       repository.registerSuccess(userId);
 
