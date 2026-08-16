@@ -4,13 +4,16 @@
  * Contrôle d'accès à l'entrée du serveur : un nouveau membre n'accède au reste
  * du serveur qu'après avoir résolu un captcha.
  *
- * Le module déclare ses tables, ses références Discord et ce qu'il confie aux
- * registres de purge et d'effacement. Le captcha, les boutons et la commande de
- * déblocage arrivent aux lots suivants — rien n'écrit encore dans ces tables.
- *
- * Aucun `init` : le chargeur du noyau n'en attend pas d'un module qui n'a rien
- * à monter, et en écrire un vide pour la forme n'apprendrait rien.
+ * Le module déclare ses tables, ses références Discord, ce qu'il confie aux
+ * registres de purge et d'effacement, et monte le moteur du captcha. Les
+ * boutons, la modale et la commande de déblocage arrivent aux lots suivants :
+ * rien n'est encore visible sur le serveur.
  */
+
+import { createChallenge } from './challenge/index.js';
+import { createVerificationEngine } from './engine.js';
+import { createVerificationRepository } from './repository.js';
+import { createChallengeStore } from './store.js';
 
 export const name = 'verification';
 
@@ -61,6 +64,53 @@ export const erasure = [
   { table: 'verification_history', user_column: 'user_id', strategy: 'delete' },
   { table: 'verification_history', user_column: 'actor_id', strategy: 'anonymize' },
 ];
+
+/**
+ * Moteur monté par `init()`, consommé par les composants du lot suivant.
+ *
+ * État de module plutôt que valeur rendue : le chargeur du noyau ignore ce que
+ * `init()` retourne, et un composant déclaré dans `components` ne reçoit que
+ * l'interaction et le contexte du noyau — jamais l'assemblage interne du
+ * module.
+ */
+let engine = null;
+
+/** @returns {object|null} `null` tant qu'`init()` n'a pas tourné. */
+export const getEngine = () => engine;
+
+/**
+ * Monte le captcha : l'épreuve, la mémoire des codes et le moteur.
+ *
+ * Appelée avant la connexion. Tout ce qui peut être validé au démarrage l'est —
+ * `prepare()` vérifie ici que la police se charge, plutôt que de découvrir un
+ * `font_path` erroné au premier clic d'un membre, sur une image de carrés
+ * vides.
+ */
+export function init(ctx) {
+  const logger = ctx.logger.forModule(name);
+  const challenge = createChallenge({ config: ctx.config, logger });
+
+  challenge.prepare();
+
+  const store = createChallengeStore({
+    config: ctx.config,
+    logger,
+    shutdown: ctx.shutdown,
+  }).start();
+
+  engine = createVerificationEngine({
+    config: ctx.config,
+    challenge,
+    store,
+    repository: createVerificationRepository({ database: ctx.database }),
+  });
+
+  logger.info('captcha monté', {
+    challenge: challenge.type,
+    ttl_seconds: ctx.config.get('verification.challenge.ttl_seconds'),
+    max_attempts: ctx.config.get('verification.max_attempts'),
+  });
+}
 
 /**
  * Capacités et références Discord dont elles dépendent (spec §9).

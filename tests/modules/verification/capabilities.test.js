@@ -168,13 +168,13 @@ describe('forme des déclarations', () => {
   test('le module déclare, il n\'agit pas encore', async () => {
     const module = await import('../../../src/modules/verification/index.js');
 
-    // Déclaratif : des tables, ce qu'on en purge et ce qu'on en efface.
-    for (const field of ['migrations', 'retention', 'erasure', 'capabilities']) {
+    // Déclaratif, plus le moteur monté par init().
+    for (const field of ['migrations', 'retention', 'erasure', 'capabilities', 'init']) {
       assert.notEqual(module[field], undefined, `${field} est déclaré`);
     }
 
-    // Agissant : rien encore. Aucun code ne touche les tables.
-    for (const field of ['commands', 'components', 'events', 'init', 'ready']) {
+    // Rien de visible sur le serveur : aucune interaction n'est encore câblée.
+    for (const field of ['commands', 'components', 'events', 'ready']) {
       assert.equal(module[field], undefined, `${field} arrive à un lot ultérieur`);
     }
   });

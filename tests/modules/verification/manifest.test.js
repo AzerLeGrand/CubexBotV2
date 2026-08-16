@@ -64,13 +64,15 @@ describe('fragment de schéma', () => {
     assert.equal(result.success, true, JSON.stringify(result.error?.issues, null, 2));
   });
 
-  test('applique son seul défaut à l\'intervalle de balayage', () => {
-    const { sweep_interval_seconds: _absent, ...challenge } = SECTION.challenge;
-    const result = schema.safeParse({ ...SECTION, challenge });
+  test('les deux seuls réglages techniques portent un défaut', () => {
+    const result = schema.safeParse(SECTION);
 
-    // Réglage purement technique : sa fréquence ne change rien à ce que voit un
-    // membre. C'est le seul de la section à porter un défaut.
+    // Ni l'un ni l'autre ne change ce que voit un membre : la fréquence du
+    // balayage de la mémoire, et le seuil au-delà duquel un rendu est signalé
+    // comme lent. Tout le reste — identifiants, seuils, rétention — doit être
+    // écrit, son absence bloque le démarrage.
     assert.equal(result.data.challenge.sweep_interval_seconds > 0, true);
+    assert.equal(result.data.challenge.image.slow_render_ms > 0, true);
   });
 
   test('refuse une clé inconnue dans la section', () => {

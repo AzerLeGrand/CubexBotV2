@@ -209,8 +209,15 @@ tous configurables sous `verification.challenge.image`.
 | Tentatives avant blocage | 5 | `verification.max_attempts` |
 
 Le compteur est **persistant en base**, indexé sur l'identifiant Discord du
-membre. Il survit à un redémarrage du bot. Il est **remis à zéro après une
-vérification réussie**.
+membre. Il survit à un redémarrage du bot.
+
+Après une vérification réussie, **la ligne d'état est supprimée**. La
+suppression vaut remise à zéro : l'absence de ligne se lit comme un compteur à
+zéro. Un membre vérifié n'a plus rien à faire dans cette table, et un membre
+bloqué ne peut pas réussir — supprimer ne perd donc aucun blocage. La table ne
+contient ainsi que les vérifications en cours et les blocages actifs, ce qui la
+garde petite et son contenu lisible ; l'historique vit dans
+`verification_history`, qui est fait pour ça.
 
 > Cinq n'est pas une valeur de résistance au force brute : six caractères sur un
 > alphabet de trente et un font près d'un milliard de combinaisons, le nombre de

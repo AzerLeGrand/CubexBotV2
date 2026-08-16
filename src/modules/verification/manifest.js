@@ -91,6 +91,13 @@ const ImageSchema = subsection({
   noise_lines: count(),
   noise_dots: count(),
   distortion: distortion(),
+  // Au-delà, le rendu est journalisé en avertissement. Réglage purement
+  // technique, donc à défaut : mesuré à 2,5 ms de médiane et 3,3 ms de pire cas
+  // sur le poste de développement, un rendu qui dépasse 50 ms signale une
+  // machine un ordre de grandeur plus lente. C'est le seul moyen de découvrir
+  // cette dégradation avant que des interactions n'expirent sous les yeux des
+  // membres.
+  slow_render_ms: duration().default(50),
 });
 
 /**
