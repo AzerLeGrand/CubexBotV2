@@ -18,6 +18,12 @@
  * déclarer — aucun effet de bord, aucun import.
  */
 
+/**
+ * Nom du module, donc de sa section dans `config.yml` et de son propriétaire de
+ * migrations. Le chargeur du noyau exige qu'il vaille le nom du dossier.
+ */
+export const MODULE_NAME = 'logs';
+
 // ---------------------------------------------------------------------------
 // Salons de restitution
 // ---------------------------------------------------------------------------
@@ -38,6 +44,17 @@ export const LOG_CHANNELS = Object.freeze([
   'server',
   'moderation',
 ]);
+
+/**
+ * Identifiant de la capacité qui porte un salon de restitution.
+ *
+ * Fabriqué plutôt qu'écrit deux fois : la déclaration d'`index.js` et la lecture
+ * du routeur doivent désigner exactement la même capacité. Deux littéraux
+ * finiraient par diverger à un renommage, et le routeur interrogerait alors une
+ * capacité jamais déclarée — que le registre considère active par défaut. Le
+ * symptôme serait un `deliverable: true` sur un salon supprimé.
+ */
+export const logChannelCapability = (key) => `${MODULE_NAME}.channel.${key}`;
 
 // ---------------------------------------------------------------------------
 // Types d'événement — écrits dans log_events.event_type
@@ -102,6 +119,20 @@ export const LOG_EVENTS = Object.freeze([
   'member_kick',
   'member_timeout',
   'automod_action',
+]);
+
+/**
+ * Les seuls types qui peuvent porter un contenu de message.
+ *
+ * Sous-ensemble de `LOG_EVENTS`, et non une liste indépendante : c'est le
+ * critère qui décide si une ligne part dans `log_message_content`. Un contenu
+ * accepté sur `member_ban` écrirait une ligne que rien ne relit, sous une
+ * rétention de 30 jours, rattachée à une métadonnée qui en vit 90.
+ */
+export const MESSAGE_EVENTS = Object.freeze([
+  'message_delete',
+  'message_edit',
+  'message_bulk_delete',
 ]);
 
 // ---------------------------------------------------------------------------

@@ -55,6 +55,10 @@ const sandbox = (t) => {
   };
 };
 
+/**
+ * Ligne normalisée, telle que `createLogEvent()` la produit : `data` et
+ * `attachments` sont **déjà sérialisés**, le dépôt les lie tels quels.
+ */
 const event = (patch = {}) => ({
   eventType: 'message_delete',
   occurredAt: new Date().toISOString(),
@@ -62,7 +66,16 @@ const event = (patch = {}) => ({
   targetId: MEMBRE,
   channelId: SALON,
   source: EVENT_SOURCE.live,
+  data: '{}',
   ...patch,
+});
+
+/** Contenu normalisé : les quatre champs, `attachments` en JSON ou `null`. */
+const content = ({ authorId = null, before = null, after = null, attachments = null } = {}) => ({
+  authorId,
+  before,
+  after,
+  attachments: attachments === null ? null : JSON.stringify(attachments),
 });
 
 describe('insertEvent', () => {
@@ -74,7 +87,7 @@ describe('insertEvent', () => {
         actorId: MODERATEUR,
         actorConfidence: ACTOR_CONFIDENCE.probable,
         auditLogEntryId: '777',
-        data: { reason: 'spam' },
+        data: '{"reason":"spam"}',
       }),
     );
 
@@ -107,12 +120,12 @@ describe('insertEvent', () => {
 
     const id = repository.insertEvent(
       event({
-        content: {
+        content: content({
           authorId: MEMBRE,
           before: 'avant',
           after: 'après',
           attachments: [{ name: 'photo.png', size: 4096 }],
-        },
+        }),
       }),
     );
 
@@ -132,7 +145,7 @@ describe('insertEvent', () => {
     const { repository, rows } = sandbox(t);
     const at = '2026-08-18T14:32:07.512Z';
 
-    repository.insertEvent(event({ occurredAt: at, content: { authorId: MEMBRE, before: 'x' } }));
+    repository.insertEvent(event({ occurredAt: at, content: content({ authorId: MEMBRE, before: 'x' }) }));
 
     assert.equal(rows('log_events')[0].occurred_at, at);
     assert.equal(rows('log_message_content')[0].created_at, at);
@@ -141,7 +154,7 @@ describe('insertEvent', () => {
   test('l\'absence de pièce jointe reste NULL, jamais "[]"', (t) => {
     const { repository, rows } = sandbox(t);
 
-    repository.insertEvent(event({ content: { authorId: MEMBRE, before: 'sans fichier' } }));
+    repository.insertEvent(event({ content: content({ authorId: MEMBRE, before: 'sans fichier' }) }));
 
     const [contenu] = rows('log_message_content');
 
@@ -149,29 +162,29 @@ describe('insertEvent', () => {
     assert.equal(contenu.content_after, null, 'une suppression n\'a pas de contenu après');
   });
 
-  test('data absente est sérialisée en objet vide, jamais NULL', (t) => {
-    // La colonne est NOT NULL : un appelant qui n'a rien de particulier à dire
-    // ne doit pas faire échouer l'insertion.
+  test('data est lié tel quel, jamais re-sérialisé', (t) => {
+    // La sérialisation appartient à `createLogEvent()`, seul propriétaire :
+    // JSON.stringify appliqué une seconde fois ici produirait « "{}" », une
+    // chaîne échappée relue plus tard comme du texte plutôt que comme un objet.
     const { repository, rows } = sandbox(t);
 
     repository.insertEvent(event());
 
+    assert.equal(rows('log_events')[0].data, '{}');
     assert.deepEqual(JSON.parse(rows('log_events')[0].data), {});
   });
 
   test('rien n\'est écrit dans log_events si l\'insertion du contenu échoue', (t) => {
-    // LA propriété du lot : un arrêt entre les deux écritures laisserait une
+    // LA propriété du lot 1 : un arrêt entre les deux écritures laisserait une
     // ligne de métadonnées annonçant un contenu qui n'existe pas. L'affichage
     // promettrait un message supprimé et n'aurait rien à montrer.
     const { repository, rows } = sandbox(t);
 
-    // Sérialisation impossible : la panne se produit APRÈS l'insertion des
-    // métadonnées, ce qui est exactement le moment à couvrir.
-    const circulaire = { name: 'boucle.png' };
-    circulaire.self = circulaire;
-
+    // Valeur non liable : better-sqlite3 refuse un objet en paramètre. La panne
+    // se produit APRÈS l'insertion des métadonnées, ce qui est exactement le
+    // moment à couvrir.
     assert.throws(() =>
-      repository.insertEvent(event({ content: { authorId: MEMBRE, attachments: circulaire } })),
+      repository.insertEvent(event({ content: { ...content({ authorId: MEMBRE }), before: {} } })),
     );
 
     assert.equal(rows('log_events').length, 0, 'la transaction a été annulée');
@@ -181,10 +194,9 @@ describe('insertEvent', () => {
   test('une insertion réussie après un échec repart proprement', (t) => {
     const { repository, rows } = sandbox(t);
 
-    const circulaire = {};
-    circulaire.self = circulaire;
-
-    assert.throws(() => repository.insertEvent(event({ content: { attachments: circulaire } })));
+    assert.throws(() =>
+      repository.insertEvent(event({ content: { ...content(), before: {} } })),
+    );
     assert.doesNotThrow(() => repository.insertEvent(event()));
 
     assert.equal(rows('log_events').length, 1);
@@ -204,7 +216,7 @@ describe('findByTarget', () => {
         event({
           occurredAt,
           eventType,
-          content: { authorId: MEMBRE, before: `SECRET ${index}` },
+          content: content({ authorId: MEMBRE, before: `SECRET ${index}` }),
         }),
       );
     }

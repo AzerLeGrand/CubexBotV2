@@ -65,8 +65,9 @@ export function createLogRepository({ database }) {
    * @param {string|null} [event.channelId]  salon concerné
    * @param {string} event.source            valeur d'`EVENT_SOURCE`
    * @param {string|null} [event.auditLogEntryId]
-   * @param {object} [event.data]            détail propre au type, sérialisé en JSON
-   * @param {object|null} [event.content]    `{ authorId, before, after, attachments }`
+   * @param {string} event.data              JSON **déjà sérialisé**
+   * @param {object|null} [event.content]    `{ authorId, before, after, attachments }`,
+   *   `attachments` étant lui aussi du JSON déjà sérialisé, ou `null`
    * @returns {number} identifiant de la ligne insérée dans `log_events`
    */
   const insertEvent = database.transaction((event) => {
@@ -79,7 +80,11 @@ export function createLogRepository({ database }) {
       event.channelId ?? null,
       event.source,
       event.auditLogEntryId ?? null,
-      JSON.stringify(event.data ?? {}),
+      // Lié tel quel : `createLogEvent()` a déjà sérialisé. Re-sérialiser ici
+      // produirait une chaîne échappée — `"{\"a\":1}"` — relue plus tard comme
+      // du texte plutôt que comme un objet. Deux endroits capables de sérialiser
+      // finissent toujours par produire deux formes.
+      event.data,
     );
 
     // `lastInsertRowid` est un BigInt dès que la base grossit : converti ici, à
@@ -90,16 +95,9 @@ export function createLogRepository({ database }) {
     if (event.content != null) {
       const { authorId = null, before = null, after = null, attachments = null } = event.content;
 
-      statements.insertContent.run(
-        id,
-        event.occurredAt,
-        authorId,
-        before,
-        after,
-        // `null` reste `null` : une colonne vide se distingue d'un « aucune
-        // pièce jointe » sérialisé, et évite d'écrire "[]" sur chaque message.
-        attachments == null ? null : JSON.stringify(attachments),
-      );
+      // `attachments` arrive déjà sérialisé, `null` restant `null` : une colonne
+      // vide se distingue d'un « aucune pièce jointe » écrit `[]`.
+      statements.insertContent.run(id, event.occurredAt, authorId, before, after, attachments);
     }
 
     return id;

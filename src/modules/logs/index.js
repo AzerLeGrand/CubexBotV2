@@ -12,9 +12,12 @@
  * aux lots suivants : rien n'est encore visible sur le serveur.
  */
 
+import { logChannelCapability, LOG_CHANNELS, MODULE_NAME } from './constants.js';
+import { createRecorder } from './recorder.js';
 import { createLogRepository } from './repository.js';
+import { createRouter } from './router.js';
 
-export const name = 'logs';
+export const name = MODULE_NAME;
 
 /**
  * Migrations du module, numérotées pour lui seul : `logs/001`,
@@ -92,27 +95,45 @@ export const commands = [];
 export const events = [];
 
 /**
- * Dépôt monté par `init()`, consommé par les lots suivants.
+ * Assemblage monté par `init()`, consommé par les lots suivants.
  *
  * État de module plutôt que valeur rendue : le chargeur du noyau ignore ce que
  * `init()` retourne, et un écouteur déclaré dans `events` ne reçoit que le
  * contexte du noyau — jamais l'assemblage interne du module.
  */
 let repository = null;
+let recorder = null;
 
 /** @returns {object|null} `null` tant qu'`init()` n'a pas tourné. */
 export const getRepository = () => repository;
 
 /**
- * Monte le dépôt d'écriture, avant la connexion.
+ * Point d'entrée unique de la journalisation, pour les lots suivants.
  *
- * Les requêtes sont préparées ici et non à l'usage : une faute de SQL se
- * découvre ainsi au démarrage, pas au premier message supprimé.
+ * Les écouteurs passeront par `record()` et jamais par le dépôt : c'est ce qui
+ * garantit qu'aucune écriture n'échappe à la normalisation ni à la bascule
+ * d'activation.
+ *
+ * @returns {((input: object) => object|null)|null}
+ */
+export const getRecorder = () => recorder;
+
+/**
+ * Monte le dépôt, l'aiguillage et l'orchestration, avant la connexion.
+ *
+ * Les requêtes SQL sont préparées ici et non à l'usage : une faute de SQL se
+ * découvre ainsi au démarrage, pas au premier message supprimé. Le routeur, lui,
+ * ne lit RIEN maintenant — il interroge la configuration à chaque appel, sans
+ * quoi un `/reload` resterait sans effet sur l'aiguillage.
  */
 export function init(ctx) {
   const logger = ctx.logger.forModule(name);
 
   repository = createLogRepository({ database: ctx.database });
+
+  const router = createRouter({ config: ctx.config, capabilities: ctx.capabilities });
+
+  recorder = createRecorder({ repository, router, logger });
 
   logger.info('journalisation Discord montée', {
     last_event_at: repository.lastEventAt(),
@@ -132,31 +153,15 @@ export function init(ctx) {
  * de tourner sans plus rien enregistrer, et le trou dans l'historique ne se
  * découvrirait qu'en cherchant autre chose. Marquer `critical` ici échangerait
  * une gêne d'affichage contre une perte de données.
+ *
+ * Dérivées de `LOG_CHANNELS` plutôt qu'écrites une à une : le routeur interroge
+ * ces mêmes identifiants par `logChannelCapability()`, et deux listes séparées
+ * finiraient par diverger. Une capacité jamais déclarée est considérée ACTIVE
+ * par le registre — la divergence produirait donc un `deliverable: true` sur un
+ * salon supprimé, le contraire de ce que ces déclarations servent à dire.
  */
-export const capabilities = [
-  {
-    id: 'logs.channel.messages',
-    critical: false,
-    refs: [{ kind: 'channel', path: 'logs.channels.messages' }],
-  },
-  {
-    id: 'logs.channel.voice',
-    critical: false,
-    refs: [{ kind: 'channel', path: 'logs.channels.voice' }],
-  },
-  {
-    id: 'logs.channel.members',
-    critical: false,
-    refs: [{ kind: 'channel', path: 'logs.channels.members' }],
-  },
-  {
-    id: 'logs.channel.server',
-    critical: false,
-    refs: [{ kind: 'channel', path: 'logs.channels.server' }],
-  },
-  {
-    id: 'logs.channel.moderation',
-    critical: false,
-    refs: [{ kind: 'channel', path: 'logs.channels.moderation' }],
-  },
-];
+export const capabilities = LOG_CHANNELS.map((key) => ({
+  id: logChannelCapability(key),
+  critical: false,
+  refs: [{ kind: 'channel', path: `logs.channels.${key}` }],
+}));

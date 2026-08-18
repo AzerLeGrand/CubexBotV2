@@ -90,7 +90,10 @@ const columns = (database, table) =>
     database.prepare(`PRAGMA table_info(${table})`).all().map((column) => [column.name, column]),
   );
 
-/** Événement minimal, complété au cas par cas. */
+/**
+ * Ligne normalisée, telle que `createLogEvent()` la produit : `data` et
+ * `attachments` sont **déjà sérialisés**, le dépôt les lie tels quels.
+ */
 const event = (patch = {}) => ({
   eventType: 'message_delete',
   occurredAt: new Date().toISOString(),
@@ -99,8 +102,16 @@ const event = (patch = {}) => ({
   targetId: MEMBRE,
   channelId: SALON,
   source: EVENT_SOURCE.live,
-  data: {},
+  data: '{}',
   ...patch,
+});
+
+/** Contenu normalisé : les quatre champs, `attachments` en JSON ou `null`. */
+const content = ({ authorId = null, before = null, after = null, attachments = null } = {}) => ({
+  authorId,
+  before,
+  after,
+  attachments: attachments === null ? null : JSON.stringify(attachments),
 });
 
 describe('schéma', () => {
@@ -194,7 +205,7 @@ describe('schéma', () => {
     const { database, rows } = sandbox(t);
     const repository = createLogRepository({ database });
 
-    const id = repository.insertEvent(event({ content: { authorId: MEMBRE, before: 'salut' } }));
+    const id = repository.insertEvent(event({ content: content({ authorId: MEMBRE, before: 'salut' }) }));
 
     database.prepare('DELETE FROM log_events WHERE id = ?').run(id);
 
@@ -314,7 +325,7 @@ describe('déclarations aux registres', () => {
     const { purge, repository, logger } = registres(t);
 
     purge.register(name, retention);
-    repository.insertEvent(event({ content: { authorId: MEMBRE, before: 'salut' } }));
+    repository.insertEvent(event({ content: content({ authorId: MEMBRE, before: 'salut' }) }));
 
     const report = purge.run();
 
@@ -336,10 +347,10 @@ describe('déclarations aux registres', () => {
     // métadonnées. C'est exactement ce que la séparation des deux tables sert à
     // obtenir.
     repository.insertEvent(
-      event({ occurredAt: daysAgo(40), content: { authorId: MEMBRE, before: 'vieux' } }),
+      event({ occurredAt: daysAgo(40), content: content({ authorId: MEMBRE, before: 'vieux' }) }),
     );
     repository.insertEvent(
-      event({ occurredAt: daysAgo(10), content: { authorId: MEMBRE, before: 'récent' } }),
+      event({ occurredAt: daysAgo(10), content: content({ authorId: MEMBRE, before: 'récent' }) }),
     );
     repository.insertEvent(event({ occurredAt: daysAgo(100) }));
 
@@ -390,7 +401,7 @@ describe('effacement sur une base peuplée', () => {
 
     // Un message de MEMBRE, supprimé par lui-même : contenu et cible sont lui.
     repository.insertEvent(
-      event({ targetId: MEMBRE, content: { authorId: MEMBRE, before: 'son message' } }),
+      event({ targetId: MEMBRE, content: content({ authorId: MEMBRE, before: 'son message' }) }),
     );
 
     // Un message d'AUTRE, supprimé par MEMBRE agissant comme modérateur.
@@ -399,7 +410,7 @@ describe('effacement sur une base peuplée', () => {
         actorId: MEMBRE,
         actorConfidence: ACTOR_CONFIDENCE.probable,
         targetId: AUTRE,
-        content: { authorId: AUTRE, before: 'le message d\'un tiers' },
+        content: content({ authorId: AUTRE, before: 'le message d\'un tiers' }),
       }),
     );
 
