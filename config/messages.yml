@@ -157,3 +157,125 @@ config:
     # Ajouté à la description quand la liste ne tient pas dans un embed. La
     # troncature est faite avant substitution, le compte total reste exact.
     truncated: "{shown} anomalies affichées sur {count}. Le détail complet est dans les journaux."
+
+# Journalisation des événements Discord (phase 2).
+#
+# Les gabarits d'embeds.yml ne portent qu'un titre et une description : toute la
+# mise en page vit donc ici, et se réordonne sans toucher au code.
+#
+# Chaque description de famille reçoit TOUJOURS les six variables ci-dessous,
+# jamais vides — un marqueur resté visible signalerait une variable oubliée.
+#   {type}     libellé du type d'événement
+#   {time}     heure, dans le fuseau du serveur
+#   {target}   membre concerné
+#   {actor}    auteur de l'action, avec sa réserve éventuelle
+#   {channel}  salon concerné
+#   {content}  contenu du message, ou renvoi vers la pièce jointe
+logs:
+  family:
+    messages: "Journal des messages"
+    voice: "Journal vocal"
+    members: "Journal des membres"
+    server: "Journal du serveur"
+    moderation: "Journal de modération"
+
+  rich:
+    messages: |-
+      **{type}** · {time}
+      Auteur du message : {target}
+      Salon : {channel}
+      Action de : {actor}
+
+      {content}
+    voice: |-
+      **{type}** · {time}
+      Membre : {target}
+      Salon : {channel}
+      Action de : {actor}
+    members: |-
+      **{type}** · {time}
+      Membre : {target}
+      Action de : {actor}
+    server: |-
+      **{type}** · {time}
+      Élément concerné : {target}
+      Salon : {channel}
+      Action de : {actor}
+    moderation: |-
+      **{type}** · {time}
+      Membre : {target}
+      Action de : {actor}
+
+  compact:
+    title: "Résumé d'activité"
+    body: "{lines}"
+    # Une ligne par événement. Aucun contenu de message : il part en pièce
+    # jointe, jamais dans une énumération qu'on parcourt en diagonale.
+    line: "`{time}` **{type}** — {target} · {actor}"
+
+  # Formulation imposée par la spec §3. La corrélation avec le journal d'audit
+  # se fait sur le salon, la cible et une fenêtre temporelle : elle est faillible
+  # dès que deux actions semblables tombent dans la même seconde. Ne JAMAIS
+  # affirmer un auteur probable.
+  actor:
+    # La plateforme désigne l'auteur elle-même : aucune réserve à formuler.
+    certain: "{user}"
+    # La réserve est portée par le texte, pas par une nuance de couleur qu'on
+    # oublierait de lire.
+    probable: "{user} (probable)"
+    # Personne n'est nommé. Discord n'inscrit rien au journal d'audit quand un
+    # membre supprime son propre message : c'est le cas le plus fréquent.
+    unknown: "auteur inconnu"
+
+  content:
+    before: "**Avant**\n{text}"
+    after: "**Après**\n{text}"
+    # Au-delà de logs.attachment_threshold caractères : l'embed porte le
+    # contexte, le fichier porte le contenu intégral. Jamais de troncature — la
+    # fin d'un message supprimé est souvent ce qu'on cherchait.
+    attached: "Contenu joint en fichier : `{file}`"
+
+  attachment:
+    # Une entrée par événement dans le fichier joint d'un lot condensé.
+    entry: "[{time}] {type} — {author}\n{content}\n"
+
+  # Valeur absente : un tiret plutôt qu'un blanc, qui passerait pour un oubli.
+  value:
+    none: "—"
+
+  # Libellés des trente-trois types. Le code n'écrit aucun de ces textes : il
+  # compose la clé logs.type.<event_type>.
+  type:
+    message_delete: "Message supprimé"
+    message_edit: "Message modifié"
+    message_bulk_delete: "Suppression en masse"
+    voice_join: "Connexion en vocal"
+    voice_leave: "Déconnexion du vocal"
+    voice_move: "Changement de salon vocal"
+    voice_server_mute: "Micro coupé par le serveur"
+    voice_server_deafen: "Casque coupé par le serveur"
+    voice_suppress: "Mise en attente"
+    member_join: "Arrivée sur le serveur"
+    member_leave: "Départ du serveur"
+    member_nickname: "Changement de pseudo"
+    member_role_add: "Rôle attribué"
+    member_role_remove: "Rôle retiré"
+    role_create: "Rôle créé"
+    role_delete: "Rôle supprimé"
+    role_update: "Rôle modifié"
+    channel_create: "Salon créé"
+    channel_delete: "Salon supprimé"
+    channel_update: "Salon modifié"
+    channel_permissions_update: "Permissions de salon modifiées"
+    webhook_update: "Webhooks modifiés"
+    emoji_create: "Émoji ajouté"
+    emoji_delete: "Émoji supprimé"
+    emoji_update: "Émoji renommé"
+    invite_create: "Invitation créée"
+    invite_delete: "Invitation supprimée"
+    guild_update: "Paramètres du serveur modifiés"
+    member_ban: "Bannissement"
+    member_unban: "Levée de bannissement"
+    member_kick: "Expulsion"
+    member_timeout: "Exclusion temporaire"
+    automod_action: "Règle AutoMod déclenchée"

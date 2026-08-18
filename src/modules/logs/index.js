@@ -13,11 +13,14 @@
  */
 
 import { createAuditCache, verifyAuditActions } from './audit.js';
+import { createBatcher } from './batching.js';
 import { logChannelCapability, LOG_CHANNELS, MODULE_NAME } from './constants.js';
 import { createCorrelator } from './correlation.js';
+import { createDispatcher } from './dispatcher.js';
 import { createExclusions } from './exclusions.js';
 import { createPendingQueue } from './pending.js';
 import { createRecorder } from './recorder.js';
+import { createRenderer } from './render.js';
 import { createLogRepository } from './repository.js';
 import { createRouter } from './router.js';
 
@@ -108,6 +111,7 @@ export const events = [];
 let repository = null;
 let recorder = null;
 let pending = null;
+let dispatcher = null;
 
 /**
  * Accès à Discord, injecté APRÈS la connexion.
@@ -120,7 +124,7 @@ let pending = null;
  *
  * Dégradé, jamais silencieux : `init()` le journalise une fois au démarrage.
  */
-const discord = { fetchEntries: null, resolveRoles: null, botUserId: null };
+const discord = { fetchEntries: null, resolveRoles: null, botUserId: null, send: null };
 
 /**
  * Branche les accès Discord une fois le client connecté (lot 5).
@@ -129,9 +133,10 @@ const discord = { fetchEntries: null, resolveRoles: null, botUserId: null };
  * @param {(query: { actionName: string, limit: number }) => Promise<object[]>} access.fetchEntries
  * @param {(userId: string) => Promise<string[]>} access.resolveRoles
  * @param {string} access.botUserId  `client.user.id`, jamais une clé de config
+ * @param {(message: object) => Promise<unknown>} access.send envoi d'un message
  * @param {Record<string, unknown>} [access.auditActions] `AuditLogEvent`, vérifié si fourni
  */
-export function attach({ fetchEntries, resolveRoles, botUserId, auditActions = null }) {
+export function attach({ fetchEntries, resolveRoles, botUserId, send, auditActions = null }) {
   // Vérifié ICI et pas ailleurs : `constants.js` est lu à l'étape 0 et n'importe
   // pas discord.js, donc rien avant ce point ne peut confronter nos noms
   // d'action à l'énumération de la bibliothèque. Un nom inconnu lève.
@@ -140,6 +145,7 @@ export function attach({ fetchEntries, resolveRoles, botUserId, auditActions = n
   discord.fetchEntries = fetchEntries ?? null;
   discord.resolveRoles = resolveRoles ?? null;
   discord.botUserId = botUserId ?? null;
+  discord.send = send ?? null;
 
   return discord;
 }
@@ -160,6 +166,9 @@ export const getRecorder = () => recorder;
 
 /** File d'attente des écritures différées. Exposée pour le vidage et les tests. */
 export const getPending = () => pending;
+
+/** File de groupement et d'envoi. Exposée pour le vidage et les tests. */
+export const getDispatcher = () => dispatcher;
 
 /**
  * Monte le dépôt, l'aiguillage et l'orchestration, avant la connexion.
@@ -201,22 +210,55 @@ export function init(ctx) {
     logger,
   });
 
+  const renderer = createRenderer({ embeds: ctx.embeds, config, logger });
+
+  dispatcher = createDispatcher({
+    // Même adaptateur tardif que les trois autres accès : sans `attach()`, le
+    // module écrit en base et n'envoie rien.
+    send: async (message) => {
+      if (discord.send === null) return null;
+
+      return discord.send(message);
+    },
+    renderer,
+    batcher: createBatcher({ embeds: ctx.embeds, logger }),
+    config,
+    logger,
+  });
+
   // La file appelle le recorder, que la file compose : l'indirection casse le
   // cycle sans rendre l'assemblage conditionnel.
+  //
+  // **C'est ici que le dispatcher se branche**, sur la valeur de retour de
+  // `write()` — le point prévu au lot 2. Tout ce qui est écrit passe par là, y
+  // compris ce que le vidage d'arrêt écrit sans corréler : un événement écrit
+  // et jamais restitué serait invisible pour le staff.
   pending = createPendingQueue({
     delayMs: () => config.get('logs.audit.write_delay_ms'),
-    onDue: (event, options) => recorder.write(event, options),
+    onDue: async (payload, options) => {
+      const written = await recorder.write(payload, options);
+
+      if (written !== null) dispatcher.enqueue(written);
+
+      return written;
+    },
     logger,
   });
 
   recorder = createRecorder({ repository, router, correlator, exclusions, pending, logger });
 
-  // Vidage à l'arrêt, sans plafond explicite : celui du socle suffit largement
-  // pour quelques insertions SQLite synchrones, et l'invariant du §3 veut la
-  // somme des plafonds sous `kill_timeout`.
+  // Vidage à l'arrêt, sans plafond explicite : celui du socle suffit largement,
+  // et l'invariant du §3 veut la somme des plafonds sous `kill_timeout`.
+  //
+  // **L'ORDRE DES DEUX INSCRIPTIONS PORTE UNE GARANTIE.** La séquence d'arrêt
+  // déroule ses étapes à l'envers de leur inscription : le dispatcher inscrit en
+  // premier part donc en dernier, après la file d'écriture. Les événements
+  // encore en attente sont ainsi écrits ET enfilés avant qu'on ne tente de les
+  // envoyer. L'ordre inverse les laisserait en base sans jamais les afficher.
   //
   // Un événement encore en attente quand le bot s'arrête n'existe NULLE PART
   // ailleurs : Discord ne le rejouera pas.
+  ctx.shutdown?.register(`${name}:dispatch`, () => dispatcher.flush());
   ctx.shutdown?.register(name, () => pending.flush());
 
   logger.info('journalisation Discord montée', {
@@ -224,10 +266,13 @@ export function init(ctx) {
     message_content_days: config.get('logs.retention.message_content_days'),
     structural_days: config.get('logs.retention.structural_days'),
     write_delay_ms: config.get('logs.audit.write_delay_ms'),
+    window_seconds: config.get('logs.grouping.window_seconds'),
     // Dit une fois, jamais répété : tant que `attach()` n'a pas eu lieu, aucune
-    // corrélation ni exclusion par rôle n'est possible et tout part en
-    // `unknown`. C'est l'état normal entre `init()` et la connexion.
+    // corrélation ni exclusion par rôle n'est possible, rien n'est envoyé, et
+    // tout part en `unknown`. C'est l'état normal entre `init()` et la
+    // connexion — les lignes continuent d'être écrites en base.
     discord_attached: discord.fetchEntries !== null,
+    sending: discord.send !== null,
   });
 }
 

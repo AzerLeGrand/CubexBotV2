@@ -127,14 +127,21 @@ export function createEmbedEngine({ config, logger }) {
      *
      * Discord rejette le message entier au-delà, sans indiquer lequel déborde.
      *
+     * **MUETTE, délibérément.** C'est une MESURE, pas une alerte : elle rend le
+     * verdict et la longueur, l'appelant a tout ce qu'il faut pour décider et
+     * pour journaliser ce que sa décision signifie.
+     *
+     * Elle a journalisé un avertissement, et c'était un défaut de contrat : une
+     * fonction ne peut pas être à la fois un prédicat consulté en boucle et une
+     * alerte. Le premier appelant qui s'en est servi pour découper un lot
+     * produisait un avertissement par coupure — un fonctionnement parfaitement
+     * sain émettant le signal réservé aux anomalies, qui aurait noyé un vrai
+     * dépassement le jour où il serait survenu.
+     *
      * @returns {{ ok: boolean, length: number }}
      */
     fits(embeds) {
       const length = embeds.reduce((sum, embed) => sum + measure(embed), 0);
-
-      if (length > EMBED_LIMITS.total) {
-        logger.warn('budget de message dépassé', { length, limit: EMBED_LIMITS.total });
-      }
 
       return { ok: length <= EMBED_LIMITS.total, length };
     },

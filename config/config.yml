@@ -260,6 +260,9 @@ logs:
     # Discord limite le débit d'envoi : une purge de cent messages saturerait un
     # envoi par événement. Un événement isolé part donc avec ce léger délai.
     window_seconds: 5
+    # Nombre d'ÉVÉNEMENTS, pas une taille : au-delà, la fenêtre part en un seul
+    # embed condensé plutôt qu'en un embed par événement.
+    compact_threshold: 5
 
   # Au-delà de ce nombre de caractères, le contenu part en fichier joint plutôt
   # qu'en troncature : un embed rejeté par l'API est un message qui n'arrive

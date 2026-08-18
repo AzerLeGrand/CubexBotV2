@@ -136,3 +136,50 @@ templates:
     color: "error"
     title_key: "config.reload_failed.title"
     description_key: "config.reload_failed.description"
+
+  # --- Journalisation Discord (phase 2) --------------------------------------
+
+  # UN GABARIT PAR FAMILLE, pas par type : trente-trois gabarits seraient
+  # ingérables, et rien ne les distinguerait qu'un titre. Le type de l'événement
+  # est un texte de messages.yml, inséré en variable.
+  #
+  # Un gabarit ne porte qu'une couleur, un titre et une description — le schéma
+  # du socle n'accepte rien d'autre, pas de champs. La mise en page de chaque
+  # famille vit donc dans messages.yml, où le staff peut la réordonner.
+  log_messages:
+    color: "info"
+    title_key: "logs.family.messages"
+    description_key: "logs.rich.messages"
+
+  log_voice:
+    color: "info"
+    title_key: "logs.family.voice"
+    description_key: "logs.rich.voice"
+
+  # Les arrivées et départs ne sont pas des incidents : la couleur informe.
+  log_members:
+    color: "info"
+    title_key: "logs.family.members"
+    description_key: "logs.rich.members"
+
+  # Couleur de marque : un changement de structure vient de l'équipe, pas d'un
+  # membre, et se distingue ainsi du flux ordinaire au coup d'œil.
+  log_server:
+    color: "brand"
+    title_key: "logs.family.server"
+    description_key: "logs.rich.server"
+
+  # Seule famille en erreur : une sanction doit sauter aux yeux dans un salon
+  # que l'on parcourt en diagonale.
+  log_moderation:
+    color: "error"
+    title_key: "logs.family.moderation"
+    description_key: "logs.rich.moderation"
+
+  # Rendu condensé, au-delà de logs.grouping.compact_threshold événements dans
+  # une même fenêtre. Un embed unique qui énumère, plutôt que dix embeds qui
+  # noient le salon.
+  log_compact:
+    color: "info"
+    title_key: "logs.compact.title"
+    description_key: "logs.compact.body"

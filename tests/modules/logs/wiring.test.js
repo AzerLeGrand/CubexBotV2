@@ -8,11 +8,13 @@ import { CapabilityRegistry } from '../../../src/core/config/capabilities.js';
 import { Configuration } from '../../../src/core/config/index.js';
 import { buildConfigSchema } from '../../../src/core/config/schema/core.schema.js';
 import { createDatabase } from '../../../src/core/database/index.js';
+import { createEmbedEngine } from '../../../src/core/embeds/index.js';
 import { CORE_OWNER } from '../../../src/core/database/migrations.js';
 import { AUDIT_ACTION_NAMES, logChannelCapability } from '../../../src/modules/logs/constants.js';
 import {
   attach,
   capabilities as declared,
+  getDispatcher,
   getPending,
   getRecorder,
   init,
@@ -84,6 +86,9 @@ const mount = (t) => {
     database,
     logger,
     capabilities,
+    // Le VRAI moteur du socle, sur les gabarits livrés : un moteur factice ne
+    // prouverait pas qu'`embeds.yml` et `messages.yml` rendent quoi que ce soit.
+    embeds: createEmbedEngine({ config, logger }),
     shutdown: { register: (step, close) => arrets.push({ step, close }) },
   });
 
@@ -115,13 +120,18 @@ describe('montage', () => {
     assert.equal(typeof getRecorder().record, 'function');
   });
 
-  test('inscrit le vidage de la file auprès de la séquence d\'arrêt', (t) => {
+  test('inscrit les deux vidages, dans l\'ordre qui les fait partir à l\'envers', (t) => {
     // Un événement encore en attente quand le bot s'arrête n'existe nulle part
     // ailleurs : Discord ne le rejouera pas.
+    //
+    // La séquence d'arrêt déroule ses étapes à l'ENVERS de leur inscription :
+    // le dispatcher inscrit en premier part donc en dernier, après la file
+    // d'écriture. L'ordre inverse laisserait les derniers événements en base
+    // sans jamais les afficher.
     const { arrets } = mount(t);
 
-    assert.deepEqual(arrets.map((held) => held.step), [name]);
-    assert.equal(typeof arrets[0].close, 'function');
+    assert.deepEqual(arrets.map((held) => held.step), [`${name}:dispatch`, name]);
+    for (const arret of arrets) assert.equal(typeof arret.close, 'function');
   });
 
   test('annonce l\'état dégradé une seule fois, en info', (t) => {
@@ -242,6 +252,69 @@ describe('attach()', () => {
         }),
       /MemberKick/,
     );
+  });
+});
+
+describe('branchement de l\'envoi', () => {
+  test('sans send, la ligne est écrite et rien n\'est envoyé', async (t) => {
+    // Mode dégradé : le module écrit en base et n'envoie rien, ce que le
+    // démarrage annonce une fois.
+    const { rows, logger } = mount(t);
+
+    await getRecorder().record(input());
+    await getDispatcher().flush();
+
+    assert.equal(rows('log_events').length, 1);
+    assert.equal(logger.of('warn').length, 0, 'ne pas envoyer n\'est pas une panne');
+
+    const [montage] = logger.of('info').filter((held) => held.message.includes('montée'));
+
+    assert.equal(montage.context.sending, false);
+  });
+
+  test('un événement écrit est mis en file d\'envoi', async (t) => {
+    // Le point de branchement prévu au lot 2 : la valeur de retour de write().
+    const { rows } = mount(t);
+    const envois = [];
+
+    attach({
+      fetchEntries: async () => [],
+      resolveRoles: async () => [],
+      botUserId: '444444444444444444',
+      send: async (message) => {
+        envois.push(message);
+      },
+    });
+
+    await getRecorder().record(input());
+    await getDispatcher().flush();
+
+    assert.equal(rows('log_events').length, 1);
+    assert.equal(envois.length, 1);
+    assert.equal(envois[0].embeds.length, 1);
+    assert.equal(typeof envois[0].channelId, 'string');
+  });
+
+  test('un événement exclu n\'est ni écrit ni envoyé', async (t) => {
+    const { rows } = mount(t);
+    const envois = [];
+
+    attach({
+      fetchEntries: async () => [],
+      resolveRoles: async () => [],
+      botUserId: MEMBRE,
+      send: async (message) => {
+        envois.push(message);
+      },
+    });
+
+    // Le membre visé EST le bot : l'événement est écarté par les exclusions.
+    assert.equal(await getRecorder().record(input()), null);
+
+    await getDispatcher().flush();
+
+    assert.equal(rows('log_events').length, 0);
+    assert.equal(envois.length, 0);
   });
 });
 

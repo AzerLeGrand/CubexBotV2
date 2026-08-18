@@ -16,6 +16,15 @@ export const EMBED_LIMITS = Object.freeze({
   fieldName: 256,
   fieldValue: 1024,
   fields: 25,
+  /**
+   * Embeds par message.
+   *
+   * discord.js ne l'expose sous aucune constante — vérifié sur ses exports —
+   * alors que le découpage d'un lot d'événements en a besoin. Sa place est ici,
+   * avec les autres limites de la plateforme, plutôt qu'en dur dans le module
+   * qui découpe.
+   */
+  embeds: 10,
   /** Somme de tous les textes d'un même message. */
   total: 6000,
 });

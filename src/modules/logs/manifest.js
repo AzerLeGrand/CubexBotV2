@@ -97,6 +97,12 @@ export const schema = z
       // un envoi par événement. Un événement isolé part donc avec ce léger
       // délai, ce que la spec §5 accepte explicitement.
       window_seconds: duration().default(5),
+
+      // Nombre d'ÉVÉNEMENTS, jamais une taille : au-delà, la fenêtre part en un
+      // seul embed condensé plutôt qu'en un embed par événement. Une purge de
+      // cent messages produirait sinon dix messages de dix embeds, qui
+      // noieraient le salon pour un seul geste de modération.
+      compact_threshold: positive().default(5),
     }),
 
     // Au-delà de ce nombre de caractères, le contenu part en fichier joint

@@ -164,14 +164,30 @@ describe('limites de plateforme', () => {
   });
 
   test('refuse un ensemble dépassant le budget du message', () => {
-    const { embeds, logger } = engine();
+    const { embeds } = engine();
     const gros = { description: 'x'.repeat(4000), footer: { text: 'Cubex' } };
 
     const { ok, length } = embeds.fits([gros, gros]);
 
     assert.equal(ok, false);
     assert.ok(length > EMBED_LIMITS.total);
-    assert.match(logger.of('warn').at(-1).message, /budget de message/);
+  });
+
+  test('MUETTE : elle mesure, elle n\'alerte pas', () => {
+    // Une fonction ne peut pas être à la fois un prédicat consulté en boucle et
+    // une alerte. Un appelant qui découpe un lot l'interroge une fois par
+    // coupure : journaliser ici ferait émettre à un fonctionnement sain le
+    // signal réservé aux anomalies, et noierait un vrai dépassement.
+    //
+    // C'est à l'appelant de dire ce que sa décision signifie — le découpage d'un
+    // lot est une information de fonctionnement, donc un `debug`.
+    const { embeds, logger } = engine();
+    const gros = { description: 'x'.repeat(4000), footer: { text: 'Cubex' } };
+
+    embeds.fits([gros, gros]);
+    embeds.fits([gros]);
+
+    assert.deepEqual(logger.entries, []);
   });
 
   test('compte les champs dans le budget', () => {
