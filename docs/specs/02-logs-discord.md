@@ -3,8 +3,15 @@
 Enregistrement et restitution des événements du serveur Discord. Le module le plus
 volumineux de la v1.
 
-**Statut :** figé le 11 août 2026, révisé le 12 août 2026.
+**Statut :** figé le 11 août 2026, révisé le 12 puis le 18 août 2026.
 **Prérequis :** socle (`00-socle.md`) opérationnel.
+
+> Révision du 18 août 2026, à l'écriture du lot 1. Trois intents manquaient, un
+> événement était compté deux fois, un autre décrivait un comportement que
+> Discord n'a pas, le schéma indicatif rendait la table de contenu inatteignable
+> par le registre d'effacement, et l'exclusion en dur des salons de logs
+> contredisait le principe posé au même paragraphe. Les quatre points ouverts
+> sont fermés.
 
 ---
 
@@ -46,13 +53,18 @@ catégories ci-dessous n'est qu'une valeur par défaut.
 
 ### Membres
 
-| Événement |
-|-----------|
-| Arrivée sur le serveur |
-| Départ |
-| Changement de pseudo |
-| Changement d'avatar |
-| Exclusion temporaire appliquée ou levée |
+| Événement | Clé |
+|-----------|-----|
+| Arrivée sur le serveur | `member_join` |
+| Départ | `member_leave` |
+| Changement de pseudo | `member_nickname` |
+
+**Le changement d'avatar est écarté.** Il ne dit rien d'utile à la modération, et
+un membre qui change d'image trois fois dans l'après-midi noie le salon.
+
+**L'exclusion temporaire ne figure qu'une fois**, sous Modération, et sous une
+seule clé — `member_timeout`, qu'elle soit posée ou levée. Elle était listée ici
+et là : c'était un doublon, pas deux événements.
 
 ### Rôles
 
@@ -70,10 +82,14 @@ catégories ci-dessous n'est qu'une valeur par défaut.
 |-----------|
 | Création, suppression, modification d'un salon |
 | Modification des permissions d'un salon |
-| Création ou suppression d'un webhook |
+| Modification des webhooks d'un salon |
 | Ajout, suppression, renommage d'un émoji |
 | Création ou suppression d'une invitation |
 | Modification des paramètres du serveur |
+
+**Un seul événement de webhook**, `webhook_update`. La spec en décrivait deux,
+une création et une suppression : Discord n'en émet aucun des deux. Il signale
+que les webhooks d'un salon ont changé, sans dire lequel ni dans quel sens.
 
 ### Modération
 
@@ -166,11 +182,23 @@ on ignore.
 | `exclusions.users` | comptes, bots compris |
 | `exclusions.roles` | rôles |
 
-### Exclusion non désactivable
+### Protection contre la boucle
 
-Les salons de journalisation eux-mêmes sont exclus **en dur** des écritures du
-bot, sans possibilité de le désactiver. C'est la protection contre la boucle :
-sans elle, chaque log déclencherait un log.
+Sans protection, chaque log déclencherait un log.
+
+Elle repose sur **la présence du bot dans `exclusions.users`**, et sur rien
+d'autre : le bot est l'auteur de ses propres écritures, il tombe donc sous le
+principe ci-dessus sans qu'aucun traitement particulier soit nécessaire.
+
+> Correction du 18 août 2026. Une version antérieure excluait **en dur les salons
+> de journalisation eux-mêmes**. C'était une contradiction avec le principe posé
+> au même paragraphe : l'exclusion porte sur l'auteur de l'action, jamais sur
+> l'endroit. Cette exclusion aurait rendu invisible la suppression d'un log par
+> un modérateur — c'est-à-dire précisément l'événement qu'on voudrait voir.
+>
+> Conséquence : `exclusions.users` **doit** contenir l'identifiant du bot. C'est
+> une entrée de configuration comme une autre, et son absence se voit — les
+> salons de logs se mettent à se journaliser les uns les autres.
 
 ---
 
@@ -220,8 +248,14 @@ v1.
 
 ### Permissions
 
-Toute la hiérarchie de modération, de `Trainee` à `Owner`. Configurable via
+Toute la hiérarchie de modération, de `Modo-T` à `Owner`. Configurable via
 `commands.history.allowed_roles`.
+
+La spec citait un rôle `Trainee` qui n'existe pas sur le serveur. La hiérarchie
+réelle, telle que `config.yml` la porte déjà pour `/unblock` : `Owner`, `Admin`,
+`S-Modo`, `Modo`, `Modo-T`. La liste reste propre à cette commande — consulter
+l'activité d'un membre et recharger la configuration n'ont aucune raison de
+partager la même.
 
 ---
 
@@ -280,15 +314,35 @@ purge du socle.
 
 ## 10. Tables
 
-Schéma indicatif, à préciser à l'implémentation.
-
 | Table | Contenu |
 |-------|---------|
-| `log_events` | type, auteur, cible, salon, horodatage, données structurées |
-| `log_message_content` | référence à l'événement, contenu avant, contenu après, métadonnées des pièces jointes |
+| `log_events` | type, auteur, **certitude de l'attribution**, cible, salon, horodatage, **provenance**, entrée d'audit, données structurées |
+| `log_message_content` | référence à l'événement, **auteur du message**, **horodatage**, contenu avant, contenu après, métadonnées des pièces jointes |
 
 La séparation du contenu dans une table distincte permet de purger les contenus à
 30 jours tout en conservant les métadonnées à 90 jours.
+
+Trois colonnes que le schéma indicatif du 11 août n'avait pas, et sans lesquelles
+il ne tenait pas :
+
+- **`log_message_content.author_id`.** Sans elle, la table était **inatteignable
+  par le registre d'effacement**, qui cible une colonne portant un identifiant de
+  membre. Le contenu des messages — la donnée la plus personnelle que le bot
+  conserve — aurait survécu à une demande d'effacement.
+- **`log_message_content.created_at`, qui duplique `log_events.occurred_at`.** Ce
+  n'est pas une redondance à corriger : le registre de purge exige une colonne de
+  date **sur la table qu'il purge**, et les deux tables ont des rétentions
+  différentes. Sans elle, le contenu ne pourrait partir qu'avec les métadonnées,
+  donc à 90 jours au lieu de 30 — ce qui viderait la séparation de son sens.
+- **`log_events.actor_confidence` et `log_events.source`.** La première porte le
+  `certain | probable | unknown` du §3 jusqu'à l'affichage ; la seconde le
+  `live | catchup` du §8. Toutes deux sont **stockées et non recalculées** : la
+  fenêtre de corrélation est configurable, et la relire à l'affichage changerait
+  rétroactivement la certitude de lignes déjà écrites.
+
+Les horodatages sont en **ISO 8601 strict, en TEXT, avec le `T`** — jamais
+`datetime('now')`. Voir `.claude/rules/database.md` : le registre de purge refuse
+la table si la forme dévie.
 
 ---
 
@@ -302,7 +356,20 @@ La séparation du contenu dans une table distincte permet de purger les contenus
 | `MessageContent` | **privilégié** | contenu des messages |
 | `GuildVoiceStates` | standard | journalisation vocale |
 | `GuildModeration` | standard | bannissements |
+| `GuildExpressions` | standard | émojis et autocollants |
+| `GuildWebhooks` | standard | webhooks |
+| `GuildInvites` | standard | invitations |
 | `AutoModerationExecution` | standard | déclenchements AutoMod |
+
+**Les trois avant-derniers manquaient à la table du 11 août.** Sans eux, les
+émojis, les webhooks et les invitations ne remontent **jamais en direct** : ils
+ne seraient rattrapés qu'au redémarrage suivant, par le journal d'audit, ce qui
+n'est pas de la journalisation. L'omission était silencieuse — Discord n'émet
+simplement rien, sans erreur ni avertissement.
+
+`GuildExpressions` est le nom courant du membre de `GatewayIntentBits` ;
+`GuildEmojisAndStickers` en est l'alias hérité, présent dans la même version de
+discord.js et valant le même bit. On écrit le nom courant.
 
 Les deux intents privilégiés s'activent dans le portail développeur. Aucune
 procédure de revue n'est requise en dessous de 10 000 utilisateurs.
@@ -312,11 +379,28 @@ des auteurs et le rattrapage sont impossibles.
 
 ---
 
-## 12. Points ouverts
+## 12. Points tranchés
 
-1. **Seuil de bascule** vers le fichier joint — valeur par défaut à fixer.
-2. **Fenêtre de groupement** — 2 ou 5 secondes. Clé propre à ce module
-   (`logs.grouping.window_seconds`), indépendante de celle de la phase 6.
-3. **Tolérance de corrélation** avec le journal d'audit — fenêtre temporelle
-   acceptable pour attribuer une action à un auteur.
-4. **Identifiants réels** des neuf salons de journalisation.
+Les quatre points ouverts du 11 août sont fermés. Les trois premiers sont des
+réglages purement techniques : ils portent un défaut dans le schéma, seule
+catégorie de clés à laquelle le socle §15 l'autorise.
+
+| Point | Décision | Clé |
+|-------|----------|-----|
+| Seuil de bascule vers le fichier joint | 1024 caractères | `logs.attachment_threshold` |
+| Fenêtre de groupement | 5 secondes | `logs.grouping.window_seconds` |
+| Tolérance de corrélation avec le journal d'audit | 5 secondes | `logs.audit.correlation_window_seconds` |
+| Salons de journalisation | **cinq**, pas neuf | `logs.channels.*` |
+
+**Cinq salons et non neuf** : `messages`, `voice`, `members`, `server`,
+`moderation`. Le nombre de neuf venait d'un comptage des catégories du §2, qui
+n'est pas la même chose — la répartition des événements en catégories n'est
+qu'une valeur par défaut, et chaque événement pointe individuellement vers son
+salon. Les identifiants sont renseignés dans `config.yml`.
+
+La fenêtre de groupement reste **propre à ce module**, indépendante de celle de
+la phase 6 : les deux flux n'ont ni le même débit ni la même urgence.
+
+Deux réglages sont volontairement **sans défaut** : les deux durées de rétention
+du §9. Un défaut silencieux sur une rétention, c'est une donnée personnelle
+conservée plus longtemps que prévu sans que personne ne le sache.
