@@ -186,19 +186,30 @@ on ignore.
 
 Sans protection, chaque log déclencherait un log.
 
-Elle repose sur **la présence du bot dans `exclusions.users`**, et sur rien
-d'autre : le bot est l'auteur de ses propres écritures, il tombe donc sous le
-principe ci-dessus sans qu'aucun traitement particulier soit nécessaire.
+Les salons de journalisation sont journalisés comme les autres. La protection
+contre la boucle ne repose ni sur une exclusion de salon, qui contredirait le
+principe posé plus haut, ni sur une entrée de configuration : **le bot s'exclut
+lui-même par `client.user.id`, à l'exécution**. Ses propres écritures ne sont
+donc jamais journalisées, sans qu'aucune valeur ne soit à renseigner ni à
+maintenir.
 
-> Correction du 18 août 2026. Une version antérieure excluait **en dur les salons
-> de journalisation eux-mêmes**. C'était une contradiction avec le principe posé
-> au même paragraphe : l'exclusion porte sur l'auteur de l'action, jamais sur
-> l'endroit. Cette exclusion aurait rendu invisible la suppression d'un log par
-> un modérateur — c'est-à-dire précisément l'événement qu'on voudrait voir.
+`exclusions.users` reste destinée aux autres comptes — un bot tiers bavard, un
+webhook — et sa valeur vide est l'état neutre attendu.
+
+> Correction du 18 août 2026, en deux temps. Une version antérieure excluait
+> **en dur les salons de journalisation eux-mêmes**. C'était une contradiction
+> avec le principe posé au même paragraphe : l'exclusion porte sur l'auteur de
+> l'action, jamais sur l'endroit. Cette exclusion aurait rendu invisible la
+> suppression d'un log par un modérateur — c'est-à-dire précisément l'événement
+> qu'on voudrait voir.
 >
-> Conséquence : `exclusions.users` **doit** contenir l'identifiant du bot. C'est
-> une entrée de configuration comme une autre, et son absence se voit — les
-> salons de logs se mettent à se journaliser les uns les autres.
+> Déplacer la garantie dans `exclusions.users` aurait reproduit la même
+> faiblesse d'un cran plus loin : une liste vidée le temps d'un test, ou une
+> application Discord recréée sans mise à jour de la clé, lèverait la protection
+> sans que rien ne le signale. **Une garantie structurelle ne dépend pas d'une
+> valeur éditable.**
+
+L'implémentation du filtrage appartient au lot 3.
 
 ---
 

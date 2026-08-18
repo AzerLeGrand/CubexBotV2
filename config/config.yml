@@ -286,13 +286,11 @@ logs:
     # la phase 3, conservée sans limite et exclue de la purge.
     structural_days: 90
 
-  # L'exclusion porte sur l'AUTEUR DE L'ACTION, jamais sur le message concerné :
-  # un modérateur qui supprime un message dans un salon exclu reste journalisé.
-  # La liste vide est l'état neutre et sûr — tout est journalisé.
-  #
-  # Les salons de journalisation eux-mêmes sont exclus en dur, sans réglage
-  # possible : c'est la protection contre la boucle, sans elle chaque log
-  # déclencherait un log.
+  # Comptes, salons et rôles dont l'activité ordinaire n'est pas journalisée.
+  # Le bot n'a pas à y figurer : il s'exclut lui-même par client.user.id, à
+  # l'exécution. Une garantie structurelle ne doit pas dépendre d'une valeur
+  # éditable, qu'un vidage de liste ou une recréation de l'application
+  # suffirait à lever en silence.
   exclusions:
     channels: []
     users: []
