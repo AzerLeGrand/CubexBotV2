@@ -185,6 +185,7 @@ function normalizeContent(content, type) {
  * @param {string|null} [input.actorId]    auteur de l'action
  * @param {string} input.actorConfidence   `certain`, `probable` ou `unknown`
  * @param {string|null} [input.targetId]   membre concerné
+ * @param {string|null} [input.correlationTargetId] cible d'audit, non persistée
  * @param {string|null} [input.channelId]  salon OÙ l'action a eu lieu
  * @param {string} input.source            `live` ou `catchup`
  * @param {string|null} [input.auditLogEntryId]
@@ -244,6 +245,20 @@ export function createLogEvent(input) {
     actorId: actor,
     actorConfidence,
     targetId: optionalId(input.targetId, 'targetId'),
+    /**
+     * Cible du journal d'audit, **jamais persistée**.
+     *
+     * `target_id` est déclaré au registre d'effacement comme colonne de MEMBRE :
+     * y écrire l'identifiant d'un rôle créé ou d'un salon supprimé lui donnerait
+     * deux sens, et le prochain lecteur de la colonne se tromperait — sans
+     * parler d'un effacement RGPD qui anonymiserait un rôle.
+     *
+     * Le corrélateur compare sur ce champ quand il est fourni, sur `targetId`
+     * sinon. L'identité de l'objet d'un événement structurel vit dans `data`,
+     * qui est fait pour ça. Le dépôt énumère ses colonnes : ce champ ne
+     * l'atteint jamais.
+     */
+    correlationTargetId: optionalId(input.correlationTargetId, 'correlationTargetId'),
     channelId: optionalId(input.channelId, 'channelId'),
     source,
     auditLogEntryId: optionalId(input.auditLogEntryId, 'auditLogEntryId'),

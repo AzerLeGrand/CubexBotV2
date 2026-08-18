@@ -286,19 +286,43 @@ describe('sortie prête pour le dépôt', () => {
     assert.equal(createLogEvent(input({ data: { a: 1 } })).data, '{"a":1}');
   });
 
-  test('rend exactement les clés attendues par insertEvent', () => {
+  test('rend exactement les clés attendues', () => {
     assert.deepEqual(Object.keys(createLogEvent(input())), [
       'eventType',
       'occurredAt',
       'actorId',
       'actorConfidence',
       'targetId',
+      'correlationTargetId',
       'channelId',
       'source',
       'auditLogEntryId',
       'data',
       'content',
     ]);
+  });
+
+  test('correlationTargetId est porté mais jamais persisté', () => {
+    // `target_id` est déclaré au registre d'effacement comme colonne de MEMBRE :
+    // y écrire l'identifiant d'un rôle créé lui donnerait deux sens. Le dépôt
+    // énumère ses colonnes, ce champ ne l'atteint jamais.
+    const ROLE = '888888888888888888';
+
+    const event = createLogEvent(
+      input({ type: 'role_create', targetId: null, correlationTargetId: ROLE, channelId: null }),
+    );
+
+    assert.equal(event.correlationTargetId, ROLE);
+    assert.equal(event.targetId, null);
+  });
+
+  test('correlationTargetId vaut null par défaut, et refuse un nombre', () => {
+    assert.equal(createLogEvent(input()).correlationTargetId, null);
+
+    assert.throws(
+      () => createLogEvent(input({ correlationTargetId: 123456789012345678 })),
+      /correlationTargetId reçu comme nombre/,
+    );
   });
 
   test('renomme type en eventType, comme la colonne', () => {

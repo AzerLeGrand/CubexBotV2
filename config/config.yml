@@ -267,10 +267,21 @@ logs:
   attachment_threshold: 1024
 
   audit:
-    # Tolérance de la corrélation avec le journal d'audit. Trop large, elle
-    # attribue une action au mauvais modérateur ; trop étroite, elle rend
-    # « auteur inconnu » sur des cas identifiables.
+    # Écart maximal accepté ENTRE un événement et une entrée du journal
+    # d'audit pour les lier. Trop large, elle attribue une action au mauvais
+    # modérateur ; trop étroite, elle rend « auteur inconnu » sur des cas
+    # identifiables. À ne pas confondre avec write_delay_ms ci-dessous.
     correlation_window_seconds: 5
+    # Combien de temps on ATTEND avant d'écrire. Discord n'inscrit l'entrée
+    # d'audit qu'après avoir émis l'événement de passerelle : écrire aussitôt,
+    # ce serait écrire « auteur inconnu » sur des actions attribuables.
+    write_delay_ms: 750
+    # Âge au-delà duquel les entrées d'une action sont relues auprès de
+    # l'API. Une purge de cent messages doit coûter une requête, pas cent.
+    refresh_interval_ms: 2000
+    # Nombre d'entrées demandées par requête ; au-delà de la fenêtre de
+    # corrélation, elles sont écartées à la lecture.
+    fetch_limit: 25
 
   catchup:
     # Un bot arrêté trois semaines ne doit pas déverser trois semaines

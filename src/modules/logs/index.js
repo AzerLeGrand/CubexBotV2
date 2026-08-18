@@ -12,7 +12,11 @@
  * aux lots suivants : rien n'est encore visible sur le serveur.
  */
 
+import { createAuditCache, verifyAuditActions } from './audit.js';
 import { logChannelCapability, LOG_CHANNELS, MODULE_NAME } from './constants.js';
+import { createCorrelator } from './correlation.js';
+import { createExclusions } from './exclusions.js';
+import { createPendingQueue } from './pending.js';
 import { createRecorder } from './recorder.js';
 import { createLogRepository } from './repository.js';
 import { createRouter } from './router.js';
@@ -103,6 +107,42 @@ export const events = [];
  */
 let repository = null;
 let recorder = null;
+let pending = null;
+
+/**
+ * Accès à Discord, injecté APRÈS la connexion.
+ *
+ * `init()` tourne avant que le client ne soit connecté : ni le journal d'audit,
+ * ni les rôles d'un membre, ni l'identifiant du bot n'existent encore. Le module
+ * se monte quand même et fonctionne en mode dégradé explicite — aucune
+ * corrélation, aucune exclusion par rôle, tout en `unknown` — jusqu'à ce que le
+ * lot 5 appelle `attach()`.
+ *
+ * Dégradé, jamais silencieux : `init()` le journalise une fois au démarrage.
+ */
+const discord = { fetchEntries: null, resolveRoles: null, botUserId: null };
+
+/**
+ * Branche les accès Discord une fois le client connecté (lot 5).
+ *
+ * @param {object} access
+ * @param {(query: { actionName: string, limit: number }) => Promise<object[]>} access.fetchEntries
+ * @param {(userId: string) => Promise<string[]>} access.resolveRoles
+ * @param {string} access.botUserId  `client.user.id`, jamais une clé de config
+ * @param {Record<string, unknown>} [access.auditActions] `AuditLogEvent`, vérifié si fourni
+ */
+export function attach({ fetchEntries, resolveRoles, botUserId, auditActions = null }) {
+  // Vérifié ICI et pas ailleurs : `constants.js` est lu à l'étape 0 et n'importe
+  // pas discord.js, donc rien avant ce point ne peut confronter nos noms
+  // d'action à l'énumération de la bibliothèque. Un nom inconnu lève.
+  if (auditActions !== null) verifyAuditActions(auditActions);
+
+  discord.fetchEntries = fetchEntries ?? null;
+  discord.resolveRoles = resolveRoles ?? null;
+  discord.botUserId = botUserId ?? null;
+
+  return discord;
+}
 
 /** @returns {object|null} `null` tant qu'`init()` n'a pas tourné. */
 export const getRepository = () => repository;
@@ -118,6 +158,9 @@ export const getRepository = () => repository;
  */
 export const getRecorder = () => recorder;
 
+/** File d'attente des écritures différées. Exposée pour le vidage et les tests. */
+export const getPending = () => pending;
+
 /**
  * Monte le dépôt, l'aiguillage et l'orchestration, avant la connexion.
  *
@@ -128,17 +171,63 @@ export const getRecorder = () => recorder;
  */
 export function init(ctx) {
   const logger = ctx.logger.forModule(name);
+  const config = ctx.config;
 
   repository = createLogRepository({ database: ctx.database });
 
-  const router = createRouter({ config: ctx.config, capabilities: ctx.capabilities });
+  const router = createRouter({ config, capabilities: ctx.capabilities });
 
-  recorder = createRecorder({ repository, router, logger });
+  // Adaptateurs vers Discord. Ils consultent `discord` à CHAQUE appel plutôt que
+  // de capturer sa valeur : `attach()` n'a pas encore eu lieu, et figer un
+  // `null` ici laisserait le module dégradé pour toujours.
+  //
+  // Le mode dégradé est silencieux à l'usage, et c'est voulu : sans journal
+  // d'audit, chaque événement conclut `unknown` — le signaler à chaque fois
+  // noierait le fichier. L'état est dit une fois, au démarrage.
+  const auditCache = createAuditCache({
+    fetchEntries: async (query) =>
+      discord.fetchEntries === null ? [] : discord.fetchEntries(query),
+    config,
+    logger,
+  });
+
+  const correlator = createCorrelator({ auditCache, config, logger });
+
+  const exclusions = createExclusions({
+    config,
+    resolveRoles: async (userId) =>
+      discord.resolveRoles === null ? [] : discord.resolveRoles(userId),
+    botUserId: () => discord.botUserId,
+    logger,
+  });
+
+  // La file appelle le recorder, que la file compose : l'indirection casse le
+  // cycle sans rendre l'assemblage conditionnel.
+  pending = createPendingQueue({
+    delayMs: () => config.get('logs.audit.write_delay_ms'),
+    onDue: (event, options) => recorder.write(event, options),
+    logger,
+  });
+
+  recorder = createRecorder({ repository, router, correlator, exclusions, pending, logger });
+
+  // Vidage à l'arrêt, sans plafond explicite : celui du socle suffit largement
+  // pour quelques insertions SQLite synchrones, et l'invariant du §3 veut la
+  // somme des plafonds sous `kill_timeout`.
+  //
+  // Un événement encore en attente quand le bot s'arrête n'existe NULLE PART
+  // ailleurs : Discord ne le rejouera pas.
+  ctx.shutdown?.register(name, () => pending.flush());
 
   logger.info('journalisation Discord montée', {
     last_event_at: repository.lastEventAt(),
-    message_content_days: ctx.config.get('logs.retention.message_content_days'),
-    structural_days: ctx.config.get('logs.retention.structural_days'),
+    message_content_days: config.get('logs.retention.message_content_days'),
+    structural_days: config.get('logs.retention.structural_days'),
+    write_delay_ms: config.get('logs.audit.write_delay_ms'),
+    // Dit une fois, jamais répété : tant que `attach()` n'a pas eu lieu, aucune
+    // corrélation ni exclusion par rôle n'est possible et tout part en
+    // `unknown`. C'est l'état normal entre `init()` et la connexion.
+    discord_attached: discord.fetchEntries !== null,
   });
 }
 

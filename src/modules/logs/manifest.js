@@ -109,7 +109,29 @@ export const schema = z
       // Tolérance de la corrélation avec le journal d'audit (spec §3). Trop
       // large, elle attribue une action au mauvais modérateur ; trop étroite,
       // elle rend « auteur inconnu » sur des cas identifiables. D'où un réglage.
+      //
+      // À NE JAMAIS CONFONDRE avec write_delay_ms : celui-ci dit combien de
+      // temps on ATTEND avant d'écrire, celle-là l'écart maximal accepté ENTRE
+      // un événement et une entrée d'audit pour les lier. Les deux se mesurent
+      // en temps et ne mesurent pas la même chose.
       correlation_window_seconds: duration().default(5),
+
+      // Délai entre la réception d'un événement et son écriture. Discord
+      // n'inscrit l'entrée d'audit qu'APRÈS avoir émis l'événement de
+      // passerelle : écrire aussitôt, c'est écrire « auteur inconnu » sur des
+      // actions parfaitement attribuables. Trop long, et l'arrêt du bot trouve
+      // une file pleine qu'il doit vider sans corrélation.
+      write_delay_ms: duration().default(750),
+
+      // Âge au-delà duquel les entrées d'une action sont relues auprès de
+      // l'API. C'est ce qui évite une requête par événement : une purge de cent
+      // messages doit coûter une requête, pas cent.
+      refresh_interval_ms: duration().default(2000),
+
+      // Nombre d'entrées demandées par requête. Au-delà de la fenêtre de
+      // corrélation elles ne servent à rien, les plus vieilles étant écartées
+      // à la lecture.
+      fetch_limit: positive().default(25),
     }),
 
     catchup: subsection({

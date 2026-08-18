@@ -34,30 +34,30 @@ catégories ci-dessous n'est qu'une valeur par défaut.
 
 ### Messages
 
-| Événement | Détail |
-|-----------|--------|
-| Suppression | contenu, auteur, salon, auteur de la suppression si identifiable |
-| Modification | contenu avant et après |
-| Suppression en masse | nombre, salon, contenus |
+| Événement            | Détail                                                           |
+| -------------------- | ---------------------------------------------------------------- |
+| Suppression          | contenu, auteur, salon, auteur de la suppression si identifiable |
+| Modification         | contenu avant et après                                           |
+| Suppression en masse | nombre, salon, contenus                                          |
 
 ### Vocal
 
-| Événement |
-|-----------|
-| Connexion à un salon vocal |
-| Déconnexion |
-| Changement de salon |
-| Micro coupé par le serveur |
+| Événement                   |
+| --------------------------- |
+| Connexion à un salon vocal  |
+| Déconnexion                 |
+| Changement de salon         |
+| Micro coupé par le serveur  |
 | Casque coupé par le serveur |
-| Mise en attente |
+| Mise en attente             |
 
 ### Membres
 
-| Événement | Clé |
-|-----------|-----|
-| Arrivée sur le serveur | `member_join` |
-| Départ | `member_leave` |
-| Changement de pseudo | `member_nickname` |
+| Événement              | Clé               |
+| ---------------------- | ----------------- |
+| Arrivée sur le serveur | `member_join`     |
+| Départ                 | `member_leave`    |
+| Changement de pseudo   | `member_nickname` |
 
 **Le changement d'avatar est écarté.** Il ne dit rien d'utile à la modération, et
 un membre qui change d'image trois fois dans l'après-midi noie le salon.
@@ -68,24 +68,24 @@ et là : c'était un doublon, pas deux événements.
 
 ### Rôles
 
-| Événement |
-|-----------|
-| Attribution d'un rôle à un membre |
-| Retrait d'un rôle à un membre |
-| Création d'un rôle |
-| Suppression d'un rôle |
+| Événement                                          |
+| -------------------------------------------------- |
+| Attribution d'un rôle à un membre                  |
+| Retrait d'un rôle à un membre                      |
+| Création d'un rôle                                 |
+| Suppression d'un rôle                              |
 | Modification d'un rôle (nom, couleur, permissions) |
 
 ### Serveur
 
-| Événement |
-|-----------|
+| Événement                                      |
+| ---------------------------------------------- |
 | Création, suppression, modification d'un salon |
-| Modification des permissions d'un salon |
-| Modification des webhooks d'un salon |
-| Ajout, suppression, renommage d'un émoji |
-| Création ou suppression d'une invitation |
-| Modification des paramètres du serveur |
+| Modification des permissions d'un salon        |
+| Modification des webhooks d'un salon           |
+| Ajout, suppression, renommage d'un émoji       |
+| Création ou suppression d'une invitation       |
+| Modification des paramètres du serveur         |
 
 **Un seul événement de webhook**, `webhook_update`. La spec en décrivait deux,
 une création et une suppression : Discord n'en émet aucun des deux. Il signale
@@ -93,12 +93,12 @@ que les webhooks d'un salon ont changé, sans dire lequel ni dans quel sens.
 
 ### Modération
 
-| Événement |
-|-----------|
-| Bannissement |
-| Levée de bannissement |
-| Expulsion |
-| Exclusion temporaire |
+| Événement                         |
+| --------------------------------- |
+| Bannissement                      |
+| Levée de bannissement             |
+| Expulsion                         |
+| Exclusion temporaire              |
 | Déclenchement d'une règle AutoMod |
 
 ---
@@ -159,11 +159,11 @@ Conséquences à assumer :
 
 Cette distinction est le cœur du mécanisme :
 
-| Situation | Comportement |
-|-----------|--------------|
-| Le bot écrit un log | non journalisé |
-| Un modérateur supprime un message du bot | **journalisé** |
-| Un membre écrit dans un salon exclu | non journalisé |
+| Situation                                             | Comportement   |
+| ----------------------------------------------------- | -------------- |
+| Le bot écrit un log                                   | non journalisé |
+| Un modérateur supprime un message du bot              | **journalisé** |
+| Un membre écrit dans un salon exclu                   | non journalisé |
 | Un modérateur supprime un message dans un salon exclu | **journalisé** |
 
 Un filtrage sur le seul auteur du message rendrait invisibles les actions des
@@ -176,11 +176,11 @@ on ignore.
 
 ### Listes configurables
 
-| Liste | Contenu |
-|-------|---------|
+| Liste                 | Contenu                                                |
+| --------------------- | ------------------------------------------------------ |
 | `exclusions.channels` | salons dont l'activité ordinaire n'est pas journalisée |
-| `exclusions.users` | comptes, bots compris |
-| `exclusions.roles` | rôles |
+| `exclusions.users`    | comptes, bots compris                                  |
+| `exclusions.roles`    | rôles                                                  |
 
 ### Protection contre la boucle
 
@@ -226,6 +226,7 @@ arrivée massive en vocal saturerait un envoi par événement.
 
 L'écriture en base est **immédiate**, indépendamment du groupement d'affichage.
 Un incident au moment de l'envoi Discord ne doit jamais faire perdre la donnée.
+Nuance apportée à l'implémentation. Une temporisation courte, logs.audit.write_delay_ms, précède l'écriture : l'entrée du journal d'audit paraît avec un léger décalage sur l'événement de passerelle, et interroger trop tôt renvoie systématiquement vide. La fenêtre se compte en centaines de millisecondes et la file en attente est vidée à l'arrêt, sans corrélation. Seul un arrêt brutal — coupure, SIGKILL — perd ce qui s'y trouve. À ne pas confondre avec logs.audit.correlation_window_seconds, qui borne l'écart accepté entre un événement et une entrée d'audit, et sert aussi au rattrapage.
 
 ---
 
@@ -306,11 +307,11 @@ récupérable.
 
 ## 9. Rétention
 
-| Donnée | Durée par défaut | Clé |
-|--------|------------------|-----|
-| Contenu des messages supprimés ou modifiés | 30 jours | `logs.retention.message_content_days` |
-| Événements structurels | 90 jours | `logs.retention.structural_days` |
-| Événements de modération dans `log_events` | 90 jours | `logs.retention.structural_days` |
+| Donnée                                     | Durée par défaut | Clé                                   |
+| ------------------------------------------ | ---------------- | ------------------------------------- |
+| Contenu des messages supprimés ou modifiés | 30 jours         | `logs.retention.message_content_days` |
+| Événements structurels                     | 90 jours         | `logs.retention.structural_days`      |
+| Événements de modération dans `log_events` | 90 jours         | `logs.retention.structural_days`      |
 
 > Précision levant un renvoi circulaire avec la phase 3. Un bannissement produit
 > **deux lignes distinctes** : une dans `log_events` (le fait journalisé), une
@@ -325,9 +326,9 @@ purge du socle.
 
 ## 10. Tables
 
-| Table | Contenu |
-|-------|---------|
-| `log_events` | type, auteur, **certitude de l'attribution**, cible, salon, horodatage, **provenance**, entrée d'audit, données structurées |
+| Table                 | Contenu                                                                                                                      |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `log_events`          | type, auteur, **certitude de l'attribution**, cible, salon, horodatage, **provenance**, entrée d'audit, données structurées  |
 | `log_message_content` | référence à l'événement, **auteur du message**, **horodatage**, contenu avant, contenu après, métadonnées des pièces jointes |
 
 La séparation du contenu dans une table distincte permet de purger les contenus à
@@ -359,18 +360,18 @@ la table si la forme dévie.
 
 ## 11. Intents requis
 
-| Intent | Statut | Usage |
-|--------|--------|-------|
-| `Guilds` | standard | structure du serveur |
-| `GuildMembers` | **privilégié** | arrivées, départs, rôles |
-| `GuildMessages` | standard | événements de message |
-| `MessageContent` | **privilégié** | contenu des messages |
-| `GuildVoiceStates` | standard | journalisation vocale |
-| `GuildModeration` | standard | bannissements |
-| `GuildExpressions` | standard | émojis et autocollants |
-| `GuildWebhooks` | standard | webhooks |
-| `GuildInvites` | standard | invitations |
-| `AutoModerationExecution` | standard | déclenchements AutoMod |
+| Intent                    | Statut         | Usage                    |
+| ------------------------- | -------------- | ------------------------ |
+| `Guilds`                  | standard       | structure du serveur     |
+| `GuildMembers`            | **privilégié** | arrivées, départs, rôles |
+| `GuildMessages`           | standard       | événements de message    |
+| `MessageContent`          | **privilégié** | contenu des messages     |
+| `GuildVoiceStates`        | standard       | journalisation vocale    |
+| `GuildModeration`         | standard       | bannissements            |
+| `GuildExpressions`        | standard       | émojis et autocollants   |
+| `GuildWebhooks`           | standard       | webhooks                 |
+| `GuildInvites`            | standard       | invitations              |
+| `AutoModerationExecution` | standard       | déclenchements AutoMod   |
 
 **Les trois avant-derniers manquaient à la table du 11 août.** Sans eux, les
 émojis, les webhooks et les invitations ne remontent **jamais en direct** : ils
@@ -396,12 +397,12 @@ Les quatre points ouverts du 11 août sont fermés. Les trois premiers sont des
 réglages purement techniques : ils portent un défaut dans le schéma, seule
 catégorie de clés à laquelle le socle §15 l'autorise.
 
-| Point | Décision | Clé |
-|-------|----------|-----|
-| Seuil de bascule vers le fichier joint | 1024 caractères | `logs.attachment_threshold` |
-| Fenêtre de groupement | 5 secondes | `logs.grouping.window_seconds` |
-| Tolérance de corrélation avec le journal d'audit | 5 secondes | `logs.audit.correlation_window_seconds` |
-| Salons de journalisation | **cinq**, pas neuf | `logs.channels.*` |
+| Point                                            | Décision           | Clé                                     |
+| ------------------------------------------------ | ------------------ | --------------------------------------- |
+| Seuil de bascule vers le fichier joint           | 1024 caractères    | `logs.attachment_threshold`             |
+| Fenêtre de groupement                            | 5 secondes         | `logs.grouping.window_seconds`          |
+| Tolérance de corrélation avec le journal d'audit | 5 secondes         | `logs.audit.correlation_window_seconds` |
+| Salons de journalisation                         | **cinq**, pas neuf | `logs.channels.*`                       |
 
 **Cinq salons et non neuf** : `messages`, `voice`, `members`, `server`,
 `moderation`. Le nombre de neuf venait d'un comptage des catégories du §2, qui
