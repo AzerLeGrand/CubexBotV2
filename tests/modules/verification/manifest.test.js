@@ -312,10 +312,20 @@ describe('déclaration au noyau', () => {
 
     // Union telle que src/index.js la construit : le noyau garde Guilds en
     // propre, les modules y ajoutent les leurs.
+    //
+    // L'assertion porte sur la CONTRIBUTION de la vérification, jamais sur la
+    // liste complète : celle-ci grandit à chaque module — la phase 2 en ajoute
+    // sept — et un test de ce fichier n'a pas à échouer parce qu'un autre module
+    // a déclaré ses propres besoins.
     const resolved = resolveIntents(['Guilds', ...declared]);
 
-    assert.deepEqual(resolved.names, ['Guilds', 'GuildMembers', 'GuildMessages']);
-    assert.deepEqual(resolved.privileged, ['GuildMembers'], 'à cocher dans le portail développeur');
+    for (const intent of ['Guilds', ...intents]) {
+      assert.ok(resolved.names.includes(intent), intent);
+    }
+
+    // Déduplication : deux modules peuvent réclamer le même intent.
+    assert.equal(new Set(resolved.names).size, resolved.names.length);
+    assert.ok(resolved.privileged.includes('GuildMembers'), 'à cocher dans le portail développeur');
   });
 
   test('la section livrée dans config.yml satisfait le fragment', () => {

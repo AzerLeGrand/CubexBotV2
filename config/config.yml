@@ -125,3 +125,175 @@ verification:
     # blocages ne sont jamais purgés : un blocage qui se lèverait tout seul
     # viderait le mécanisme de son sens.
     history_days: 90
+
+# Journalisation des événements Discord (phase 2). Section validée par le
+# fragment de schéma du module, au même titre que les sections du noyau.
+logs:
+  # Salons de restitution. Un salon introuvable ne désactive que sa capacité :
+  # l'écriture en base continue, c'est la garantie centrale de la spec §5.
+  channels:
+    messages: "1503355248155038008"
+    voice: "1518337435434618981"
+    members: "1370784866706264127"
+    server: "1518337786166640883"
+    moderation: "1503355380040732672"
+
+  # Chaque événement s'active individuellement et pointe individuellement vers
+  # un salon : le regroupement ci-dessous n'est qu'une valeur de départ, chaque
+  # ligne se déplace sans toucher au code. Le nom de la clé « channel » doit
+  # être une clé de logs.channels ci-dessus, la validation le vérifie.
+  events:
+    # -- Messages --------------------------------------------------------
+    message_delete:
+      enabled: true
+      channel: messages
+    message_edit:
+      enabled: true
+      channel: messages
+    message_bulk_delete:
+      enabled: true
+      channel: messages
+
+    # -- Vocal -----------------------------------------------------------
+    voice_join:
+      enabled: true
+      channel: voice
+    voice_leave:
+      enabled: true
+      channel: voice
+    voice_move:
+      enabled: true
+      channel: voice
+    voice_server_mute:
+      enabled: true
+      channel: voice
+    voice_server_deafen:
+      enabled: true
+      channel: voice
+    voice_suppress:
+      enabled: true
+      channel: voice
+
+    # -- Membres ---------------------------------------------------------
+    member_join:
+      enabled: true
+      channel: members
+    member_leave:
+      enabled: true
+      channel: members
+    member_nickname:
+      enabled: true
+      channel: members
+    member_role_add:
+      enabled: true
+      channel: members
+    member_role_remove:
+      enabled: true
+      channel: members
+
+    # -- Serveur ---------------------------------------------------------
+    role_create:
+      enabled: true
+      channel: server
+    role_delete:
+      enabled: true
+      channel: server
+    role_update:
+      enabled: true
+      channel: server
+    channel_create:
+      enabled: true
+      channel: server
+    channel_delete:
+      enabled: true
+      channel: server
+    channel_update:
+      enabled: true
+      channel: server
+    channel_permissions_update:
+      enabled: true
+      channel: server
+    # Événement unique : Discord n'émet ni création ni suppression distinctes
+    # de webhook, seulement une mise à jour du salon concerné.
+    webhook_update:
+      enabled: true
+      channel: server
+    emoji_create:
+      enabled: true
+      channel: server
+    emoji_delete:
+      enabled: true
+      channel: server
+    emoji_update:
+      enabled: true
+      channel: server
+    invite_create:
+      enabled: true
+      channel: server
+    invite_delete:
+      enabled: true
+      channel: server
+    guild_update:
+      enabled: true
+      channel: server
+
+    # -- Modération ------------------------------------------------------
+    member_ban:
+      enabled: true
+      channel: moderation
+    member_unban:
+      enabled: true
+      channel: moderation
+    member_kick:
+      enabled: true
+      channel: moderation
+    # L'exclusion temporaire, posée ou levée. Une seule ligne : la spec la
+    # listait aussi sous « Membres », c'était un doublon.
+    member_timeout:
+      enabled: true
+      channel: moderation
+    automod_action:
+      enabled: true
+      channel: moderation
+
+  grouping:
+    # Discord limite le débit d'envoi : une purge de cent messages saturerait un
+    # envoi par événement. Un événement isolé part donc avec ce léger délai.
+    window_seconds: 5
+
+  # Au-delà de ce nombre de caractères, le contenu part en fichier joint plutôt
+  # qu'en troncature : un embed rejeté par l'API est un message qui n'arrive
+  # jamais, et tronquer perdrait la fin du message — souvent ce qu'on cherchait.
+  attachment_threshold: 1024
+
+  audit:
+    # Tolérance de la corrélation avec le journal d'audit. Trop large, elle
+    # attribue une action au mauvais modérateur ; trop étroite, elle rend
+    # « auteur inconnu » sur des cas identifiables.
+    correlation_window_seconds: 5
+
+  catchup:
+    # Un bot arrêté trois semaines ne doit pas déverser trois semaines
+    # d'historique au redémarrage.
+    max_hours: 24
+
+  retention:
+    # Le contenu des messages part avant les métadonnées : c'est toute la raison
+    # de leur séparation en deux tables.
+    message_content_days: 30
+    # Métadonnées de tout événement, actions de modération comprises. Un
+    # bannissement produit deux lignes : celle-ci, et une dans « sanctions » à
+    # la phase 3, conservée sans limite et exclue de la purge.
+    structural_days: 90
+
+  # L'exclusion porte sur l'AUTEUR DE L'ACTION, jamais sur le message concerné :
+  # un modérateur qui supprime un message dans un salon exclu reste journalisé.
+  # La liste vide est l'état neutre et sûr — tout est journalisé.
+  #
+  # Les salons de journalisation eux-mêmes sont exclus en dur, sans réglage
+  # possible : c'est la protection contre la boucle, sans elle chaque log
+  # déclencherait un log.
+  exclusions:
+    channels: []
+    users: []
+    roles: []
