@@ -1,6 +1,16 @@
 node_modules/
-data/
-logs/
+# ANCRÉS À LA RACINE, délibérément. Sans le slash de tête, un motif vaut pour
+# tout dossier portant ce nom à n'importe quelle profondeur : src/modules/logs/
+# et tests/modules/logs/ — le module de journalisation de la phase 2 — se sont
+# ainsi retrouvés hors du suivi de version sans qu'aucun outil ne le signale. Le
+# module n'aurait jamais atteint le VPS, et ses migrations auraient cessé de
+# s'appliquer en silence.
+#
+# Ne pas retirer ces slashs. Seuls sont visés les deux dossiers d'exécution du
+# bot, ceux que `database.file` et `logging.directory` résolvent depuis la
+# racine — pas les modules qui portent le même nom.
+/data/
+/logs/
 .env
 .env.local
 coverage/
