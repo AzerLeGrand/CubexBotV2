@@ -154,13 +154,13 @@ logs:
   events:
     # -- Messages --------------------------------------------------------
     message_delete:
-      enabled: false
+      enabled: true
       channel: messages
     message_edit:
-      enabled: false
+      enabled: true
       channel: messages
     message_bulk_delete:
-      enabled: false
+      enabled: true
       channel: messages
 
     # -- Vocal -----------------------------------------------------------
@@ -174,67 +174,67 @@ logs:
       enabled: false
       channel: voice
     voice_server_mute:
-      enabled: false
+      enabled: true
       channel: voice
     voice_server_deafen:
-      enabled: false
+      enabled: true
       channel: voice
     voice_suppress:
-      enabled: false
+      enabled: true
       channel: voice
 
     # -- Membres ---------------------------------------------------------
     member_join:
-      enabled: false
+      enabled: true
       channel: members
     member_leave:
-      enabled: false
+      enabled: true
       channel: members
     member_nickname:
-      enabled: false
+      enabled: true
       channel: members
     member_role_add:
-      enabled: false
+      enabled: true
       channel: members
     member_role_remove:
-      enabled: false
+      enabled: true
       channel: members
 
     # -- Serveur ---------------------------------------------------------
     role_create:
-      enabled: false
+      enabled: true
       channel: server
     role_delete:
-      enabled: false
+      enabled: true
       channel: server
     role_update:
-      enabled: false
+      enabled: true
       channel: server
     channel_create:
-      enabled: false
+      enabled: true
       channel: server
     channel_delete:
-      enabled: false
+      enabled: true
       channel: server
     channel_update:
-      enabled: false
+      enabled: true
       channel: server
     channel_permissions_update:
-      enabled: false
+      enabled: true
       channel: server
     # Événement unique : Discord n'émet ni création ni suppression distinctes
     # de webhook, seulement une mise à jour du salon concerné.
     webhook_update:
-      enabled: false
+      enabled: true
       channel: server
     emoji_create:
-      enabled: false
+      enabled: true
       channel: server
     emoji_delete:
-      enabled: false
+      enabled: true
       channel: server
     emoji_update:
-      enabled: false
+      enabled: true
       channel: server
     invite_create:
       enabled: false
@@ -243,26 +243,26 @@ logs:
       enabled: false
       channel: server
     guild_update:
-      enabled: false
+      enabled: true
       channel: server
 
     # -- Modération ------------------------------------------------------
     member_ban:
-      enabled: false
+      enabled: true
       channel: moderation
     member_unban:
-      enabled: false
+      enabled: true
       channel: moderation
     member_kick:
-      enabled: false
+      enabled: true
       channel: moderation
     # L'exclusion temporaire, posée ou levée. Une seule ligne : la spec la
     # listait aussi sous « Membres », c'était un doublon.
     member_timeout:
-      enabled: false
+      enabled: true
       channel: moderation
     automod_action:
-      enabled: false
+      enabled: true
       channel: moderation
 
   grouping:
