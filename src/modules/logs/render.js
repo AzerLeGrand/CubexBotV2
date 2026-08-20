@@ -28,6 +28,39 @@ const FAMILY_TEMPLATES = Object.freeze(
 const COMPACT_TEMPLATE = 'log_compact';
 
 /**
+ * Sous-clé de libellé, quand un même type recouvre deux gestes opposés.
+ *
+ * `member_timeout` couvre la pose ET la levée : un seul type, une seule entrée
+ * de configuration, un seul salon — mais deux phrases à écrire. La variante
+ * choisit la clé — `logs.data.member_timeout.set` ou `logs.data.member_timeout.lifted`
+ * — et le staff reste maître des deux textes.
+ */
+const VARIANT = 'variant';
+
+/**
+ * Raison saisie par le modérateur, reprise du journal d'audit.
+ *
+ * **Rendue à part, et non par le gabarit du type.** Elle ne vient pas de
+ * l'écouteur mais de la corrélation, et peut donc décorer N'IMPORTE QUEL type
+ * corrélé : l'inscrire dans les gabarits obligerait chacun d'eux, présent et à
+ * venir, à la porter — et un gabarit qui l'oublierait la stockerait sans jamais
+ * l'afficher.
+ *
+ * Sa ligne n'apparaît que lorsqu'il y en a une. Un modérateur en saisit rarement.
+ */
+const REASON = 'reason';
+
+/**
+ * Clés de `data` qui portent un horodatage.
+ *
+ * Convention de SUFFIXE plutôt que table par type : `created_at`, `joined_at`,
+ * `until`. Une table à tenir divergerait au premier type ajouté par un lot
+ * suivant, et la faute serait silencieuse — une date affichée telle quelle, en
+ * ISO, au milieu d'une phrase française.
+ */
+const isTimestamp = (key) => key === 'until' || key.endsWith('_at');
+
+/**
  * Extension du fichier de contenu.
  *
  * `.txt` et non `.log` ou `.md` : Discord prévisualise le texte brut dans le
@@ -142,11 +175,123 @@ export function createRenderer({ embeds, config, logger }) {
   }
 
   /**
+   * `data` tel qu'il a été écrit, ou rien.
+   *
+   * La colonne porte du JSON produit par `createLogEvent()`. Une valeur
+   * illisible n'a aucune raison d'exister — nous seuls l'écrivons — mais un
+   * `JSON.parse` qui lèverait ici ferait perdre l'embed entier pour un détail
+   * accessoire.
+   */
+  function parseData(event) {
+    try {
+      const parsed = JSON.parse(event.data ?? '{}');
+
+      return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch (cause) {
+      logger.warn('data illisible à l\'affichage', { type: event.eventType, error: cause });
+
+      return {};
+    }
+  }
+
+  /**
+   * Valeurs de `data`, prêtes pour un gabarit.
+   *
+   * Deux traitements, et rien d'autre — le reste est l'affaire de
+   * `messages.yml`, qui décide seul de la formulation et de la ponctuation.
+   *
+   * **Les horodatages passent en marquage natif Discord**, `<t:…>`, et non par
+   * `formatTime()`. Celui-ci ne rend qu'une heure, sans date : suffisant pour
+   * l'instant d'un événement, dont le jour est celui du message, inutilisable
+   * pour une date de création de compte ou une échéance d'exclusion, qui sont
+   * ailleurs dans le temps. Le marquage natif porte la date entière et
+   * l'affiche dans le fuseau de chaque lecteur — le même choix que le pied de
+   * page des embeds du socle.
+   *
+   * **Une valeur absente rend le tiret**, jamais `null` : le moteur de
+   * substitution traite `null` comme une variable non fournie, laisserait le
+   * marqueur `{joined_at}` visible et journaliserait une erreur à chaque
+   * événement.
+   */
+  function decorate(data) {
+    const variables = {};
+
+    for (const [key, value] of Object.entries(data)) {
+      if (value === null || value === undefined) {
+        variables[key] = text('logs.value.none');
+        continue;
+      }
+
+      if (isTimestamp(key)) {
+        const at = new Date(value);
+
+        variables[key] = Number.isNaN(at.getTime())
+          ? text('logs.value.none')
+          : `<t:${Math.floor(at.getTime() / 1000)}:f>`;
+
+        continue;
+      }
+
+      variables[key] = String(value);
+    }
+
+    return variables;
+  }
+
+  /**
+   * Détail d'un événement : ce qui est propre à son type, puis la raison.
+   *
+   * **`data` vide vaut « rien à dire », et rend une chaîne vide.** C'est le
+   * critère, et il évite une liste de types à tenir à jour en parallèle des
+   * clés de `messages.yml` : l'écouteur qui remplit `data` déclare par là même
+   * qu'il y a une ligne à afficher, et celui qui n'a rien à dire ne dit rien.
+   *
+   * Le corollaire à connaître : un type dont l'écouteur remplit `data` SANS clé
+   * `logs.data.<type>` correspondante affiche la clé brute et journalise une
+   * erreur. C'est bruyant, et c'est voulu — l'inverse cacherait un détail
+   * perdu.
+   *
+   * `reason` ne compte PAS dans ce critère : elle a sa propre ligne, et un
+   * bannissement qui n'a qu'elle ne doit pas aller chercher un gabarit
+   * `logs.data.member_ban` qui n'existe pas.
+   */
+  function detail(event) {
+    const data = parseData(event);
+    const lines = [];
+
+    // Tout sauf la raison : c'est ce qui décide si le type a quelque chose à
+    // dire de lui-même. `variant` compte — il choisit le libellé, donc il en
+    // porte un.
+    const own = Object.keys(data).filter((key) => key !== REASON);
+
+    if (own.length > 0) {
+      const variant = data[VARIANT];
+
+      const key =
+        variant === undefined
+          ? `logs.data.${event.eventType}`
+          : `logs.data.${event.eventType}.${variant}`;
+
+      lines.push(text(key, decorate(data)));
+    }
+
+    if (data[REASON] != null) {
+      lines.push(text('logs.data.reason', { reason: String(data[REASON]) }));
+    }
+
+    return lines.join('\n');
+  }
+
+  /**
    * Embed riche d'un événement.
    *
-   * Les six variables sont TOUJOURS fournies, jamais vides : une variable
+   * Les sept variables sont TOUJOURS fournies, jamais nulles : une variable
    * manquante laisserait son marqueur visible dans l'embed, et le moteur de
    * substitution du socle le journaliserait à chaque événement.
+   *
+   * `data` est la seule qui puisse être VIDE, et seulement quand l'événement n'a
+   * rien de particulier à dire : la ligne du gabarit disparaît alors, au lieu
+   * d'afficher un tiret que personne ne saurait interpréter.
    *
    * @param {{ id: number, event: object, routing: object }} record
    * @returns {{ embed: object, attachment: { name: string, content: string }|null }}
@@ -161,6 +306,7 @@ export function createRenderer({ embeds, config, logger }) {
       actor: actor(event),
       channel: channel(event.channelId),
       content: rendered.text,
+      data: detail(event),
     });
 
     return { embed, attachment: rendered.attachment };

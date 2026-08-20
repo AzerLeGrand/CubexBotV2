@@ -138,6 +138,17 @@ export const schema = z
       // corrélation elles ne servent à rien, les plus vieilles étant écartées
       // à la lecture.
       fetch_limit: positive().default(25),
+
+      // Longueur retenue de la raison saisie par le modérateur, reprise du
+      // journal d'audit. C'est le SEUL texte libre d'un tiers que le module
+      // écrive dans `data`, et il part ensuite dans un embed : le borner évite
+      // qu'une raison démesurée mange le budget cumulé d'un message et fasse
+      // rejeter tout un lot.
+      //
+      // 512 par défaut, qui est le plafond de Discord lui-même sur l'en-tête
+      // de raison d'audit : la valeur ne coupe donc rien en usage normal. Elle
+      // est ici pour le jour où la plateforme changerait d'avis.
+      reason_max_length: positive().default(512),
     }),
 
     catchup: subsection({

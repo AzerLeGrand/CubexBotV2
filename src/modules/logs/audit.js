@@ -28,6 +28,7 @@ import { AUDIT_ACTION_NAMES, COUNTED_AUDIT_ACTIONS } from './constants.js';
  * @property {string|null} channelId
  * @property {number} count        1 pour les actions sans compteur
  * @property {Date} createdAt
+ * @property {string|null} [reason] texte libre saisi par le modérateur
  * @property {object} [extra]
  */
 

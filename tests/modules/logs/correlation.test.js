@@ -29,7 +29,11 @@ const SALON = '222222222222222222';
 const AT = new Date(Date.UTC(2026, 7, 18, 14, 32, 7, 512));
 
 const config = (overrides = {}) => {
-  const values = { 'logs.audit.correlation_window_seconds': 5, ...overrides };
+  const values = {
+    'logs.audit.correlation_window_seconds': 5,
+    'logs.audit.reason_max_length': 512,
+    ...overrides,
+  };
 
   return {
     get(path, ...fallback) {
@@ -128,6 +132,7 @@ describe('types sans action d\'audit', () => {
       actorId: MEMBRE,
       actorConfidence: ACTOR_CONFIDENCE.certain,
       promotedType: null,
+      reason: null,
     });
   });
 
@@ -140,6 +145,7 @@ describe('types sans action d\'audit', () => {
       actorId: null,
       actorConfidence: ACTOR_CONFIDENCE.unknown,
       promotedType: null,
+      reason: null,
     });
   });
 
@@ -175,6 +181,7 @@ describe('un acteur déjà certain', () => {
       actorId: MEMBRE,
       actorConfidence: ACTOR_CONFIDENCE.certain,
       promotedType: null,
+      reason: null,
     });
     assert.deepEqual(cache.demandes, [], 'aucune requête dépensée');
   });
@@ -190,6 +197,7 @@ describe('nombre de candidates', () => {
       actorId: null,
       actorConfidence: ACTOR_CONFIDENCE.unknown,
       promotedType: null,
+      reason: null,
     });
   });
 
@@ -200,6 +208,7 @@ describe('nombre de candidates', () => {
       actorId: MODERATEUR,
       actorConfidence: ACTOR_CONFIDENCE.probable,
       promotedType: null,
+      reason: null,
     });
   });
 
@@ -233,6 +242,7 @@ describe('nombre de candidates', () => {
       actorId: null,
       actorConfidence: ACTOR_CONFIDENCE.unknown,
       promotedType: null,
+      reason: null,
     });
   });
 });
@@ -310,6 +320,7 @@ describe('actions à compteur', () => {
       actorId: null,
       actorConfidence: ACTOR_CONFIDENCE.unknown,
       promotedType: null,
+      reason: null,
     });
   });
 
@@ -557,6 +568,7 @@ describe('robustesse', () => {
       actorId: null,
       actorConfidence: ACTOR_CONFIDENCE.unknown,
       promotedType: null,
+      reason: null,
     });
     assert.equal(logger.of('warn').length, 1);
     assert.equal(logger.of('error').length, 0, 'un audit indisponible n\'est pas un défaut du bot');
@@ -580,7 +592,91 @@ describe('robustesse', () => {
       event(),
     );
 
-    assert.deepEqual(Object.keys(verdict).sort(), ['actorConfidence', 'actorId', 'promotedType']);
+    assert.deepEqual(Object.keys(verdict).sort(), [
+      'actorConfidence',
+      'actorId',
+      'promotedType',
+      'reason',
+    ]);
     assert.equal(verdict.auditLogEntryId, undefined, 'la corrélation ne rend pas cet identifiant');
+  });
+});
+
+describe('raison saisie par le modérateur', () => {
+  const raison = (patch = {}, reglages) =>
+    correlator(fakeCache([entry({ executorId: MODERATEUR, ...patch })]), reglages).resolve(event());
+
+  test('une candidate unique remonte la raison de SON entrée', async () => {
+    // La passerelle ne porte jamais la raison d'un bannissement : elle ne vit
+    // que dans le journal d'audit, qui expire à quatre-vingt-dix jours. Ne pas
+    // la prendre ici reviendrait à la perdre, et le casier de la phase 3 en
+    // aura besoin.
+    const verdict = await raison({ reason: 'publicité répétée' });
+
+    assert.equal(verdict.reason, 'publicité répétée');
+    assert.equal(verdict.actorConfidence, ACTOR_CONFIDENCE.probable);
+  });
+
+  test('PLUSIEURS candidates ne rendent aucune raison', async () => {
+    // Même règle que la promotion, et pour la même raison : reprendre la raison
+    // d'une entrée parmi plusieurs écrirait au dossier d'un membre le motif
+    // d'une sanction visant quelqu'un d'autre.
+    const cache = fakeCache([
+      entry({ id: 'a', executorId: MODERATEUR, reason: 'publicité' }),
+      entry({ id: 'b', executorId: AUTRE_MOD, reason: 'insultes' }),
+    ]);
+
+    const verdict = await correlator(cache).resolve(event());
+
+    assert.equal(verdict.reason, null);
+    assert.equal(verdict.actorId, null);
+  });
+
+  test('aucune candidate ne rend aucune raison', async () => {
+    assert.equal((await correlator(fakeCache([])).resolve(event())).reason, null);
+  });
+
+  test('une entrée sans raison rend null, jamais une chaîne vide', async () => {
+    // Discord rend `''` aussi bien qu'une absence : afficher « Raison : » suivi
+    // de rien ne dit rien.
+    assert.equal((await raison({ reason: null })).reason, null);
+    assert.equal((await raison({ reason: '' })).reason, null);
+    assert.equal((await raison({ reason: '   ' })).reason, null);
+  });
+
+  test('un type sans action d\'audit ne rend jamais de raison', async () => {
+    // Aucune requête, donc aucune entrée, donc rien à en tirer.
+    const verdict = await correlator(fakeCache([entry({ reason: 'x' })])).resolve(
+      event({ type: 'member_join', channelId: null, actorId: MEMBRE, actorConfidence: ACTOR_CONFIDENCE.certain }),
+    );
+
+    assert.equal(verdict.reason, null);
+  });
+
+  test('une raison démesurée est bornée, et la coupure est signalée', async () => {
+    // Le budget cumulé d'un message est de six mille caractères pour tous ses
+    // embeds : une raison démesurée ferait rejeter le lot ENTIER par l'API —
+    // pas tronquer, rejeter — alors que les lignes sont déjà en base.
+    const logger = fakeLogger();
+
+    const correlateur = createCorrelator({
+      auditCache: fakeCache([entry({ executorId: MODERATEUR, reason: 'a'.repeat(200) })]),
+      config: config({ 'logs.audit.reason_max_length': 50 }),
+      logger,
+    });
+
+    const verdict = await correlateur.resolve(event());
+
+    assert.equal(verdict.reason.length, 50);
+    assert.equal(logger.of('debug').filter((held) => held.message.includes('tronquée')).length, 1);
+    // La valeur n'est jamais citée : c'est du texte saisi par un tiers, et ces
+    // journaux partiront vers Discord en phase 6.
+    assert.doesNotMatch(JSON.stringify(logger.entries), /aaaa/);
+  });
+
+  test('une raison sous la limite n\'est pas touchée', async () => {
+    const verdict = await raison({ reason: 'spam' }, { 'logs.audit.reason_max_length': 512 });
+
+    assert.equal(verdict.reason, 'spam');
   });
 });

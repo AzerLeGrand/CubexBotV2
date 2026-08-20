@@ -27,30 +27,52 @@ import { createLogEvent } from './event.js';
 
 export function createRecorder({ repository, router, correlator, exclusions, pending, logger }) {
   /**
-   * Re-normalise un événement sous le type que la corrélation a établi.
+   * Re-normalise un événement avec ce que la corrélation a établi.
    *
-   * **La table `TYPE_PROMOTIONS` est fermée et fait foi.** Une promotion vers un
-   * type qui n'y figure pas lève : sans ce garde-fou, un défaut du corrélateur
-   * pourrait réécrire n'importe quel événement en n'importe quoi, et la ligne
-   * partirait en base sous une nature inventée.
+   * Deux verdicts imposent de rejouer `createLogEvent()` plutôt que de rafistoler
+   * l'objet déjà normalisé, et pour la même raison : `data` y est DÉJÀ SÉRIALISÉ,
+   * et le type y a déjà décidé ce qui était admis. Modifier l'un ou l'autre après
+   * coup produirait une ligne que la normalisation aurait refusée.
+   *
+   * **Le type promu.** `TYPE_PROMOTIONS` est fermée et fait foi : une promotion
+   * vers un type qui n'y figure pas lève. Sans ce garde-fou, un défaut du
+   * corrélateur pourrait réécrire n'importe quel événement en n'importe quoi, et
+   * la ligne partirait en base sous une nature inventée.
+   *
+   * **La raison saisie par le modérateur.** Elle ne vient pas de l'écouteur : la
+   * passerelle ne la porte pas, elle n'existe que dans l'entrée d'audit trouvée
+   * à la corrélation. Elle va dans `data` et jamais dans une colonne — c'est une
+   * donnée propre à certains types, pas un champ de tous.
    *
    * @returns {object|null} `null` si le type promu est désactivé en configuration
    */
-  function promote(event, input, promotedType) {
-    if (TYPE_PROMOTIONS[event.eventType] !== promotedType) {
-      throw new TypeError(
-        `promotion refusée : ${event.eventType} → ${promotedType} ne figure pas dans ` +
-          'TYPE_PROMOTIONS — seules les promotions déclarées sont admises',
-      );
+  function renormalize(event, input, { promotedType, reason }) {
+    const type = promotedType ?? event.eventType;
+
+    if (promotedType !== null) {
+      if (TYPE_PROMOTIONS[event.eventType] !== promotedType) {
+        throw new TypeError(
+          `promotion refusée : ${event.eventType} → ${promotedType} ne figure pas dans ` +
+            'TYPE_PROMOTIONS — seules les promotions déclarées sont admises',
+        );
+      }
+
+      // L'activation est reconsultée sur le NOUVEAU type. Le staff qui coupe
+      // `member_kick` ne veut pas d'expulsions journalisées, et l'événement en
+      // est une : le laisser passer parce qu'il est arrivé sous l'étiquette
+      // `member_leave` contournerait le réglage.
+      if (!router.isEnabled(promotedType)) return null;
     }
 
-    // L'activation est reconsultée sur le NOUVEAU type. Le staff qui coupe
-    // `member_kick` ne veut pas d'expulsions journalisées, et l'événement en est
-    // une : le laisser passer parce qu'il est arrivé sous l'étiquette
-    // `member_leave` contournerait le réglage.
-    if (!router.isEnabled(promotedType)) return null;
+    const data = { ...input.data };
 
-    return createLogEvent({ ...input, type: promotedType });
+    // Ce que l'écouteur a établi PRIME. Une raison venue de la passerelle est
+    // certaine — elle accompagne l'événement lui-même — là où celle de l'audit
+    // vient d'une corrélation `probable`. Écraser la première par la seconde
+    // remplacerait un fait par une déduction.
+    if (reason !== null && data.reason == null) data.reason = reason;
+
+    return createLogEvent({ ...input, type, data });
   }
 
   /**
@@ -74,12 +96,13 @@ export function createRecorder({ repository, router, correlator, exclusions, pen
     //    établi — souvent `unknown`, parfois `certain` quand la plateforme
     //    désignait déjà l'acteur. Mieux vaut un `unknown` écrit qu'un événement
     //    perdu.
-    const { actorId, actorConfidence, promotedType = null } = correlate
+    const { actorId, actorConfidence, promotedType = null, reason = null } = correlate
       ? await correlator.resolve(event)
       : {
           actorId: event.actorId,
           actorConfidence: event.actorConfidence,
           promotedType: null,
+          reason: null,
         };
 
     // b. Exclusions, APRÈS la corrélation et jamais avant. C'est tout le §4 :
@@ -89,15 +112,16 @@ export function createRecorder({ repository, router, correlator, exclusions, pen
     //    messages du bot.
     if (await exclusions.isExcluded(event, { actorId })) return null;
 
-    // c. Promotion de type, quand la corrélation a changé la nature de
-    //    l'événement — un départ qui se révèle être une expulsion.
+    // c. Re-normalisation, quand la corrélation a ajouté quelque chose que
+    //    l'écouteur ne pouvait pas connaître : la nature réelle de l'événement —
+    //    un départ qui se révèle être une expulsion — ou la raison saisie par le
+    //    modérateur, qui n'existe que dans l'entrée d'audit.
     //
-    //    L'événement est RE-NORMALISÉ depuis l'entrée d'origine plutôt que
-    //    rafistolé : les règles de cohérence de `createLogEvent()` dépendent du
-    //    type — un contenu de message n'est admis que sur trois d'entre eux — et
-    //    changer le type sans les rejouer produirait une ligne que la
-    //    normalisation aurait refusée.
-    const base = promotedType === null ? event : promote(event, input, promotedType);
+    //    Sautée quand elle n'a rien à faire : le cas courant est un événement
+    //    que la corrélation n'enrichit pas, et rejouer la normalisation pour
+    //    rien coûterait une sérialisation par événement.
+    const enriched = promotedType !== null || reason !== null;
+    const base = enriched ? renormalize(event, input, { promotedType, reason }) : event;
 
     if (base === null) return null;
 

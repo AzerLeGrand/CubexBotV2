@@ -163,14 +163,17 @@ config:
 # Les gabarits d'embeds.yml ne portent qu'un titre et une description : toute la
 # mise en page vit donc ici, et se réordonne sans toucher au code.
 #
-# Chaque description de famille reçoit TOUJOURS les six variables ci-dessous,
-# jamais vides — un marqueur resté visible signalerait une variable oubliée.
+# Chaque description de famille reçoit TOUJOURS les sept variables ci-dessous —
+# un marqueur resté visible signalerait une variable oubliée.
 #   {type}     libellé du type d'événement
 #   {time}     heure, dans le fuseau du serveur
 #   {target}   membre concerné
 #   {actor}    auteur de l'action, avec sa réserve éventuelle
 #   {channel}  salon concerné
 #   {content}  contenu du message, ou renvoi vers la pièce jointe
+#   {data}     détail propre au type — voir la section logs.data. Seule variable
+#              qui puisse être VIDE, quand l'événement n'a rien de plus à dire :
+#              sa ligne disparaît alors, plutôt que d'afficher un tiret.
 logs:
   family:
     messages: "Journal des messages"
@@ -192,10 +195,14 @@ logs:
       Membre : {target}
       Salon : {channel}
       Action de : {actor}
+    # La dernière ligne porte le détail propre au type — voir logs.data
+    # ci-dessous. Elle disparaît d'elle-même quand l'événement n'a rien de
+    # particulier à dire.
     members: |-
       **{type}** · {time}
       Membre : {target}
       Action de : {actor}
+      {data}
     server: |-
       **{type}** · {time}
       Élément concerné : {target}
@@ -205,6 +212,52 @@ logs:
       **{type}** · {time}
       Membre : {target}
       Action de : {actor}
+      {data}
+
+  # Détail propre à chaque type, rendu en dernière ligne des familles qui
+  # portent un {data}. Le code ne compose que la clé — logs.data.<event_type> —
+  # et fournit les valeurs que l'écouteur a écrites : toute la formulation est
+  # ici, et se réécrit sans toucher au code.
+  #
+  # Deux conventions à connaître pour éditer ces lignes :
+  #
+  #   - Les variables d'horodatage — celles dont le nom finit par _at, et
+  #     « until » — sont rendues en marquage natif Discord. Chaque lecteur les
+  #     voit dans SON fuseau, avec la date complète, là où {time} ne porte que
+  #     l'heure du serveur.
+  #   - Une valeur absente rend le tiret de logs.value.none, jamais un blanc.
+  #
+  # Un type dont l'écouteur ne remplit pas data n'a pas de clé ici et n'affiche
+  # aucune ligne de détail — un bannissement ordinaire, par exemple.
+  data:
+    # La date de création du COMPTE, pas celle de l'arrivée : un compte créé le
+    # matin même qui rejoint l'après-midi est le signal que ce salon existe pour
+    # donner.
+    member_join: "Compte créé le {created_at}"
+    member_leave: "Sur le serveur depuis le {joined_at}"
+    # Même détail que le départ : l'expulsion est le même signal de passerelle,
+    # promu par la corrélation.
+    member_kick: "Sur le serveur depuis le {joined_at}"
+    member_nickname: "Pseudo : {nickname_before} → {nickname_after}"
+    member_role_add: "Rôle : <@&{role_id}>"
+    member_role_remove: "Rôle : <@&{role_id}>"
+    # Un seul type pour deux gestes opposés (spec §2), donc deux libellés. La
+    # variante écrite dans data choisit lequel.
+    member_timeout:
+      set: "Exclusion jusqu'au {until}"
+      lifted: "Exclusion levée"
+    # Raison saisie par le modérateur, reprise du journal d'audit. Ligne à
+    # part, et non un champ de chaque gabarit ci-dessus : elle ne vient pas de
+    # l'écouteur mais de la corrélation, et peut donc accompagner n'importe
+    # quel type corrélé — bannissement, expulsion, retrait de rôle, exclusion
+    # temporaire. Elle n'apparaît que lorsqu'elle existe, ce qui est rare : peu
+    # de modérateurs en saisissent une.
+    reason: "Raison : {reason}"
+    # {keyword} est le mot CONFIGURÉ DANS LA RÈGLE, jamais l'extrait du message
+    # du membre : celui-ci relève du contenu, qui a sa propre rétention.
+    automod_action: |-
+      Règle : `{rule_id}` ({trigger})
+      Action : {action} · mot déclencheur : {keyword}
 
   compact:
     title: "Résumé d'activité"

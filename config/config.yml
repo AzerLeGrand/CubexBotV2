@@ -142,118 +142,127 @@ logs:
   # un salon : le regroupement ci-dessous n'est qu'une valeur de départ, chaque
   # ligne se déplace sans toucher au code. Le nom de la clé « channel » doit
   # être une clé de logs.channels ci-dessus, la validation le vérifie.
+  #
+  # TOUT EST À FALSE, ET C'EST DÉLIBÉRÉ. Le premier démarrage de ce module se
+  # fait sur le serveur Cubex lui-même, pas sur un serveur de test : un écouteur
+  # qui reçoit autre chose que ce qu'on croit inonderait des salons réels, lus
+  # par le staff, avant qu'on ait pu le constater.
+  #
+  # L'activation se fait FAMILLE PAR FAMILLE, à la main, après vérification —
+  # voir docs/procedures/verification-logs-discord.md. Un événement désactivé
+  # n'est ni affiché, ni écrit en base : la bascule ferme les deux à la fois.
   events:
     # -- Messages --------------------------------------------------------
     message_delete:
-      enabled: true
+      enabled: false
       channel: messages
     message_edit:
-      enabled: true
+      enabled: false
       channel: messages
     message_bulk_delete:
-      enabled: true
+      enabled: false
       channel: messages
 
     # -- Vocal -----------------------------------------------------------
     voice_join:
-      enabled: true
+      enabled: false
       channel: voice
     voice_leave:
-      enabled: true
+      enabled: false
       channel: voice
     voice_move:
-      enabled: true
+      enabled: false
       channel: voice
     voice_server_mute:
-      enabled: true
+      enabled: false
       channel: voice
     voice_server_deafen:
-      enabled: true
+      enabled: false
       channel: voice
     voice_suppress:
-      enabled: true
+      enabled: false
       channel: voice
 
     # -- Membres ---------------------------------------------------------
     member_join:
-      enabled: true
+      enabled: false
       channel: members
     member_leave:
-      enabled: true
+      enabled: false
       channel: members
     member_nickname:
-      enabled: true
+      enabled: false
       channel: members
     member_role_add:
-      enabled: true
+      enabled: false
       channel: members
     member_role_remove:
-      enabled: true
+      enabled: false
       channel: members
 
     # -- Serveur ---------------------------------------------------------
     role_create:
-      enabled: true
+      enabled: false
       channel: server
     role_delete:
-      enabled: true
+      enabled: false
       channel: server
     role_update:
-      enabled: true
+      enabled: false
       channel: server
     channel_create:
-      enabled: true
+      enabled: false
       channel: server
     channel_delete:
-      enabled: true
+      enabled: false
       channel: server
     channel_update:
-      enabled: true
+      enabled: false
       channel: server
     channel_permissions_update:
-      enabled: true
+      enabled: false
       channel: server
     # Événement unique : Discord n'émet ni création ni suppression distinctes
     # de webhook, seulement une mise à jour du salon concerné.
     webhook_update:
-      enabled: true
+      enabled: false
       channel: server
     emoji_create:
-      enabled: true
+      enabled: false
       channel: server
     emoji_delete:
-      enabled: true
+      enabled: false
       channel: server
     emoji_update:
-      enabled: true
+      enabled: false
       channel: server
     invite_create:
-      enabled: true
+      enabled: false
       channel: server
     invite_delete:
-      enabled: true
+      enabled: false
       channel: server
     guild_update:
-      enabled: true
+      enabled: false
       channel: server
 
     # -- Modération ------------------------------------------------------
     member_ban:
-      enabled: true
+      enabled: false
       channel: moderation
     member_unban:
-      enabled: true
+      enabled: false
       channel: moderation
     member_kick:
-      enabled: true
+      enabled: false
       channel: moderation
     # L'exclusion temporaire, posée ou levée. Une seule ligne : la spec la
     # listait aussi sous « Membres », c'était un doublon.
     member_timeout:
-      enabled: true
+      enabled: false
       channel: moderation
     automod_action:
-      enabled: true
+      enabled: false
       channel: moderation
 
   grouping:

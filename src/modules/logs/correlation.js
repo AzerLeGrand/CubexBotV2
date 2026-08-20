@@ -1,3 +1,5 @@
+import { clamp } from '../../core/embeds/limits.js';
+
 import { ACTOR_CONFIDENCE, AUDIT_ACTIONS, TYPE_PROMOTIONS } from './constants.js';
 
 /**
@@ -43,20 +45,54 @@ export function createCorrelator({ auditCache, config, logger }) {
   /**
    * Ce que l'appelant a déjà établi, faute de mieux.
    *
-   * `promotedType` est toujours présent, à `null` par défaut : une forme
-   * uniforme évite que l'appelant oublie de le lire sur l'un des chemins.
+   * `promotedType` et `reason` sont toujours présents, à `null` par défaut : une
+   * forme uniforme évite que l'appelant oublie de les lire sur l'un des chemins.
    */
   const asProvided = (event) => ({
     actorId: event.actorId ?? null,
     actorConfidence: event.actorId == null ? ACTOR_CONFIDENCE.unknown : event.actorConfidence,
     promotedType: null,
+    reason: null,
   });
 
   const unknown = () => ({
     actorId: null,
     actorConfidence: ACTOR_CONFIDENCE.unknown,
     promotedType: null,
+    reason: null,
   });
+
+  /**
+   * Raison saisie par le modérateur, bornée.
+   *
+   * **Le seul texte libre d'un tiers que ce module écrive dans `data`.** Il
+   * finit dans un embed, et le budget cumulé d'un message est de six mille
+   * caractères pour l'ensemble de ses embeds : une raison démesurée ferait
+   * rejeter tout un lot par l'API — pas tronquer, rejeter — alors que les
+   * lignes sont déjà en base.
+   *
+   * La coupure passe par le `clamp()` du socle, celui-là même qui coupe les
+   * textes d'embed : deux mesures concurrentes finiraient par diverger, et
+   * celle qui se tromperait serait celle qu'on ne teste pas contre l'API.
+   *
+   * Une chaîne vide vaut `null` : Discord rend `''` aussi bien qu'une absence
+   * de raison, et afficher « Raison : » suivi de rien ne dit rien.
+   */
+  function boundedReason(entry) {
+    const raw = typeof entry.reason === 'string' ? entry.reason.trim() : '';
+
+    if (raw.length === 0) return null;
+
+    const { text, truncated } = clamp(raw, config.get('logs.audit.reason_max_length'));
+
+    if (truncated) {
+      // La valeur n'est jamais citée : c'est du texte saisi par un tiers, et
+      // ces journaux partiront vers Discord en phase 6.
+      logger.debug("raison d'audit tronquée", { entry: entry.id, length: raw.length });
+    }
+
+    return text;
+  }
 
   /**
    * Une entrée peut-elle correspondre à cet événement ?
@@ -98,8 +134,10 @@ export function createCorrelator({ auditCache, config, logger }) {
    *
    * @param {object} event événement normalisé par `createLogEvent()`
    * @returns {Promise<{ actorId: string|null, actorConfidence: string,
-   *   promotedType: string|null }>} `promotedType` demande au recorder de
-   *   re-normaliser l'événement sous un autre type — voir `TYPE_PROMOTIONS`
+   *   promotedType: string|null, reason: string|null }>} `promotedType` demande
+   *   au recorder de re-normaliser l'événement sous un autre type — voir
+   *   `TYPE_PROMOTIONS` ; `reason` est le texte saisi par le modérateur, à
+   *   ranger dans `data`
    */
   async function resolve(event) {
     try {
@@ -185,10 +223,22 @@ export function createCorrelator({ auditCache, config, logger }) {
       // expulsé ; plusieurs candidates ne prouvent rien, et un départ mal
       // attribué en expulsion irait dans le salon de modération et alimenterait
       // un casier à tort.
+      //
+      // **La raison suit exactement la même règle**, et pour la même raison :
+      // elle vient de CETTE entrée. Plusieurs candidates, pas de raison — comme
+      // il n'y a pas d'acteur. Reprendre celle d'une entrée parmi plusieurs
+      // écrirait au dossier d'un membre le motif d'une sanction visant
+      // quelqu'un d'autre.
+      //
+      // La charge utile de la passerelle ne porte JAMAIS la raison d'un
+      // bannissement : elle ne vit que dans le journal d'audit, qui expire à
+      // quatre-vingt-dix jours. Ne pas la prendre ici reviendrait à la perdre,
+      // et le casier de la phase 3 en aura besoin.
       return {
         actorId: entry.executorId,
         actorConfidence: ACTOR_CONFIDENCE.probable,
         promotedType: TYPE_PROMOTIONS[event.eventType] ?? null,
+        reason: boundedReason(entry),
       };
     } catch (cause) {
       // Le journal d'audit est un enrichissement : une défaillance ici ne doit
