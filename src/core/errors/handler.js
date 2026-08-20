@@ -31,9 +31,11 @@ import { toError } from './app-error.js';
  * configuration ne soit lue, précisément pour couvrir les défaillances du
  * démarrage. Reste surchargeable par paramètre.
  *
- * **La somme des plafonds doit rester strictement inférieure au `kill_timeout`
- * de `ecosystem.config.cjs`**, faute de quoi pm2 tue le bot au milieu de sa
- * fermeture.
+ * **La somme des plafonds doit rester strictement inférieure au
+ * `TimeoutStopSec` de l'unité systemd `cubex-bot.service`**, faute de quoi le
+ * superviseur envoie SIGKILL au milieu de la fermeture et le bot perd les
+ * entrées de fin d'exécution. Ajouter une étape de fermeture impose de revoir
+ * cette valeur des deux côtés.
  */
 export const DEFAULT_STEP_TIMEOUT_MS = 3_000;
 

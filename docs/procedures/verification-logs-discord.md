@@ -62,14 +62,15 @@ défaut constaté ne se corrige pas en direct sur le serveur : la famille reste
 
 **Prérequis :** toutes les bascules de `logs.events` à `false`.
 
-**Geste :** `pm2 restart cubex-bot`, puis lire le journal du jour :
+**Geste :** `sudo systemctl restart cubex-bot`, puis lire le journal du jour :
 
 ```bash
 tail -f logs/cubex-$(date +%F).log
 ```
 
-**Le fichier, et non `pm2 logs`.** En production le journal n'écrit qu'en fichier
-JSON : `pm2 logs` ne montre que les blocages de démarrage — secrets manquants,
+**Le fichier, et non `journalctl`.** En production `NODE_ENV=production` coupe la
+sortie console et le journal n'écrit qu'en fichier JSON : `journalctl -u
+cubex-bot` ne montre que les blocages de démarrage — secrets manquants,
 configuration invalide, connexion refusée — qui partent sur la sortie d'erreur.
 Il reste donc à consulter en premier si le bot ne démarre pas du tout.
 

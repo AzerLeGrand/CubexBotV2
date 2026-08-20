@@ -6,8 +6,8 @@ Cubex (`fr.cubex.club`).
 ## Pile
 
 Node.js 24 LTS, ESM (`"type": "module"`). discord.js, better-sqlite3, js-yaml,
-**zod 4** (la syntaxe d'erreur diffère de zod 3). Supervision pm2 sur un VPS
-Debian 13.
+**zod 4** (la syntaxe d'erreur diffère de zod 3). Supervision **systemd** sur un
+VPS Debian 13, unité `cubex-bot.service`.
 
 `.env` est chargé par `process.loadEnvFile()`, natif et stable depuis Node 24.10.
 Pas de dépendance `dotenv`.
@@ -20,7 +20,54 @@ npm run dev        # démarrage avec rechargement (node --watch)
 npm test           # tests
 ```
 
-Sur le VPS : `pm2 restart cubex-bot`, `pm2 logs cubex-bot`.
+## Déploiement
+
+Sur le VPS, dans cet ordre :
+
+```bash
+git pull
+npm ci
+npm test                              # sur la machine cible, jamais seulement ici
+sudo systemctl restart cubex-bot
+tail -f logs/cubex-$(date +%F).log
+```
+
+`npm ci` et non `npm install` : il installe exactement le `package-lock.json`
+versionné, là où `install` peut résoudre une version différente et faire diverger
+le VPS du poste.
+
+`npm test` s'exécute **sur la machine cible** avant le redémarrage. C'est le seul
+endroit où une divergence de plateforme se prouve — Windows et Debian ne
+comparent, ne trient et ne résolvent pas les chemins de la même façon.
+
+### Où lire ce qui s'est passé
+
+**Le journal du jour, `logs/cubex-AAAA-MM-JJ.log`, pas `journalctl`.**
+
+En production `NODE_ENV=production` coupe la sortie console : la journalisation
+n'écrit qu'en fichier JSON. `journalctl -u cubex-bot` ne montre donc que ce qui
+part sur stderr, c'est-à-dire les seuls **blocages de démarrage** :
+
+| Ce qu'on cherche | Où le lire |
+|------------------|------------|
+| Secrets manquants, configuration invalide, manifeste illisible | `journalctl -u cubex-bot` |
+| Connexion à Discord refusée, intent privilégié non coché | `journalctl -u cubex-bot` |
+| Résumé d'une défaillance fatale (sortie 1) | `journalctl -u cubex-bot` |
+| **Tout le reste** — démarrage réussi, capacités désactivées, événements, erreurs d'exploitation | `logs/cubex-$(date +%F).log` |
+
+Un bot qui ne démarre pas du tout : `journalctl` en premier. Un bot qui tourne
+mais ne fait pas ce qu'on attend : le fichier, toujours.
+
+### Unité systemd
+
+`deploy/cubex-bot.service` est la copie versionnée de l'unité en production.
+Toute modification se fait des deux côtés, puis `sudo systemctl daemon-reload`.
+
+**`TimeoutStopSec` doit rester strictement supérieur à la somme des plafonds
+d'étape de la séquence d'arrêt** (`DEFAULT_STEP_TIMEOUT_MS`, dans
+`src/core/errors/handler.js`). En dessous, systemd envoie SIGKILL au milieu de la
+fermeture et le bot perd ses dernières écritures. Ajouter une étape de fermeture
+impose de revoir la valeur des deux côtés.
 
 ## Règle absolue : aucune valeur codée en dur
 
